@@ -1,4 +1,4 @@
-# 📄 safe-ai-receipt-finder-mvp/streamlit_app.py (Pro Version)
+# 📄 safe-ai-receipt-finder-mvp/streamlit_app.py (Super Safe Locked Down Version)
 
 import streamlit as st
 import pandas as pd
@@ -12,21 +12,30 @@ st.set_page_config(page_title="🧠 Safe AI Receipt Finder - Creative Scoring MV
 st.title("🧠 Safe AI Receipt Finder - Creative Scoring MVP")
 
 # File uploader
-uploaded_file = st.file_uploader("Upload your CSV file", type=["csv"])
+uploaded_file = st.file_uploader("Upload your CSV file (Max 200 rows)", type=["csv"])
 
 # API key input
 api_key = st.text_input("Paste your OpenAI API key", type="password")
 
-# Initialize OpenAI client if API key provided
+# Validate API key format
+def is_valid_api_key(key):
+    return key.startswith("sk-") and len(key) > 20
+
+# Initialize OpenAI client if API key provided and valid
 client = None
 if api_key:
-    client = openai.OpenAI(api_key=api_key)
+    if is_valid_api_key(api_key):
+        client = openai.OpenAI(api_key=api_key)
+    else:
+        st.error("Invalid API key format. Please check and try again.")
 
 # Main logic
 if uploaded_file and client:
     df = pd.read_csv(uploaded_file)
 
-    if 'Text' not in df.columns:
+    if len(df) > 200:
+        st.error("🚫 Upload limited to 200 rows maximum. Please upload a smaller file.")
+    elif 'Text' not in df.columns:
         st.error("Your CSV must have a 'Text' column.")
     else:
         if st.button("🧠 Embed All Hooks"):
@@ -36,6 +45,11 @@ if uploaded_file and client:
                 total = len(df)
 
                 for idx, text in enumerate(df['Text']):
+                    if pd.isna(text) or str(text).strip() == '':
+                        embeddings.append(None)
+                        progress_bar.progress((idx + 1) / total)
+                        continue
+
                     success = False
                     retries = 3
                     while not success and retries > 0:
@@ -48,13 +62,13 @@ if uploaded_file and client:
                             success = True
                         except openai.RateLimitError:
                             retries -= 1
-                            time.sleep(5)  # wait before retrying
+                            time.sleep(5)
                         except Exception as e:
-                            st.error(f"Unexpected error: {e}")
+                            st.error(f"Error embedding text at row {idx}: {e}")
                             embeddings.append(None)
-                            success = True  # Skip to next after error
+                            success = True
                     progress_bar.progress((idx + 1) / total)
-                    time.sleep(1)  # gentle wait to avoid rate limits
+                    time.sleep(1)
 
                 df['embedding'] = embeddings
 
