@@ -2,3 +2,4 @@ streamlit==1.24.1
 pandas>=2.0.3
 numpy>=1.24.4
 openai
+pillow>=10.0.0
