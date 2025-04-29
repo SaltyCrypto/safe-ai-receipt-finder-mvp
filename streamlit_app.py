@@ -1,4 +1,4 @@
-# 📄 safe-ai-receipt-finder-mvp/streamlit_app.py (Super Safe Locked Down Version)
+# 📄 safe-ai-receipt-finder-mvp/streamlit_app.py (Final Bulletproof Version)
 
 import streamlit as st
 import pandas as pd
@@ -64,25 +64,29 @@ if uploaded_file and client:
                             retries -= 1
                             time.sleep(5)
                         except Exception as e:
-                            st.error(f"Error embedding text at row {idx}: {e}")
-                            embeddings.append(None)
-                            success = True
+                            retries -= 1
+                            if retries == 0:
+                                st.error(f"Failed to embed text at row {idx} after retries. Skipping.")
+                                embeddings.append(None)
+                                success = True
                     progress_bar.progress((idx + 1) / total)
                     time.sleep(1)
 
-                df['embedding'] = embeddings
+                if len(embeddings) == len(df):
+                    df['embedding'] = embeddings
+                    st.success("✅ Embedding complete!")
+                    st.dataframe(df.head())
 
-                st.success("✅ Embedding complete!")
-                st.dataframe(df.head())
-
-                # Download CSV button
-                csv = df.to_csv(index=False)
-                st.download_button(
-                    label="📥 Download Embedded CSV",
-                    data=csv,
-                    file_name='embedded_creatives.csv',
-                    mime='text/csv'
-                )
+                    # Download CSV button
+                    csv = df.to_csv(index=False)
+                    st.download_button(
+                        label="📥 Download Embedded CSV",
+                        data=csv,
+                        file_name='embedded_creatives.csv',
+                        mime='text/csv'
+                    )
+                else:
+                    st.error("⚠️ Internal mismatch detected. Please try re-uploading.")
 
 elif uploaded_file and not api_key:
     st.warning("🔑 Please enter your OpenAI API key to proceed.")
