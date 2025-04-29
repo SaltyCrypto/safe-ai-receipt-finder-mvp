@@ -1,4 +1,4 @@
-# 📄 safe-ai-receipt-finder-mvp/streamlit_app.py (Final Bulletproof Version)
+# 📄 safe-ai-receipt-finder-mvp/streamlit_app.py (Embedding Fully Fixed Version)
 
 import streamlit as st
 import pandas as pd
@@ -47,30 +47,17 @@ if uploaded_file and client:
                 for idx, text in enumerate(df['Text']):
                     if pd.isna(text) or str(text).strip() == '':
                         embeddings.append(None)
-                        progress_bar.progress((idx + 1) / total)
-                        continue
-
-                    success = False
-                    retries = 3
-                    while not success and retries > 0:
+                    else:
                         try:
                             response = client.embeddings.create(
                                 input=text,
                                 model="text-embedding-ada-002"
                             )
                             embeddings.append(response.data[0].embedding)
-                            success = True
-                        except openai.RateLimitError:
-                            retries -= 1
-                            time.sleep(5)
                         except Exception as e:
-                            retries -= 1
-                            if retries == 0:
-                                st.error(f"Failed to embed text at row {idx} after retries. Skipping.")
-                                embeddings.append(None)
-                                success = True
+                            embeddings.append(None)
                     progress_bar.progress((idx + 1) / total)
-                    time.sleep(1)
+                    time.sleep(0.5)
 
                 if len(embeddings) == len(df):
                     df['embedding'] = embeddings
@@ -86,7 +73,7 @@ if uploaded_file and client:
                         mime='text/csv'
                     )
                 else:
-                    st.error("⚠️ Internal mismatch detected. Please try re-uploading.")
+                    st.error("❌ Major mismatch detected. Please re-upload and retry.")
 
 elif uploaded_file and not api_key:
     st.warning("🔑 Please enter your OpenAI API key to proceed.")
