@@ -1,3 +1,5 @@
+# 📄 safe-ai-receipt-finder-mvp/streamlit_app.py (PRO Mode)
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -5,121 +7,115 @@ import openai
 import time
 from sklearn.metrics.pairwise import cosine_similarity
 
-st.set_page_config(page_title="🧠 Safe AI Receipt Finder - Creative MVP", layout="centered")
+# 🚀 Set up page
+st.set_page_config(page_title="🧠 Safe AI Receipt Finder PRO", layout="centered")
+st.title("🧠 Safe AI Receipt Finder - PRO Creative Analyzer")
 
-st.title("🧠 Safe AI Receipt Finder - Creative Scoring & Diversity Picker")
+# 🚀 File uploader
+uploaded_file = st.file_uploader("📤 Upload your CSV (must have 'Text' column)", type=["csv"])
 
-# Create Tabs
-tab1, tab2 = st.tabs(["🔹 Embed Creatives", "🔹 Pick Diverse Creatives"])
+# 🚀 API Key input
+api_key = st.text_input("🔑 Paste your OpenAI API key here", type="password")
 
-# ==== TAB 1: Embedding Creatives ====
-with tab1:
-    st.header("📤 Upload and Embed Creatives")
-    uploaded_file = st.file_uploader("Upload your CSV file (Max 200 rows)", type=["csv"], key="embed")
+# ✅ Validate key
+def is_valid_api_key(key):
+    return key.startswith("sk-") and len(key) > 20
 
-    # API key input
-    api_key = st.text_input("Paste your OpenAI API key", type="password")
-
-    def is_valid_api_key(key):
-        return key.startswith("sk-") and len(key) > 20
-
-    client = None
-    if api_key:
-        if is_valid_api_key(api_key):
-            client = openai.OpenAI(api_key=api_key)
-        else:
-            st.error("Invalid API key format. Please check and try again.")
-
-    if uploaded_file and client:
-        df = pd.read_csv(uploaded_file)
-
-        if len(df) > 200:
-            st.error("🚫 Upload limited to 200 rows maximum. Please upload a smaller file.")
-        elif 'Text' not in df.columns:
-            st.error("🚫 Your CSV must have a 'Text' column.")
-        else:
-            if st.button("🧠 Embed All Hooks"):
-                with st.spinner('Embedding texts...'):
-                    progress_bar = st.progress(0)
-                    embeddings = []
-                    total = len(df)
-
-                    for idx, text in enumerate(df['Text']):
-                        if pd.isna(text) or str(text).strip() == '':
-                            embeddings.append(None)
-                        else:
-                            try:
-                                response = client.embeddings.create(
-                                    input=text,
-                                    model="text-embedding-ada-002"
-                                )
-                                embeddings.append(response.data[0].embedding)
-                            except Exception as e:
-                                embeddings.append(None)
-                        progress_bar.progress((idx + 1) / total)
-                        time.sleep(0.4)
-
-                    if len(embeddings) == len(df):
-                        df['embedding'] = embeddings
-                        st.success("✅ Embedding complete!")
-                        st.dataframe(df.head())
-
-                        csv = df.to_csv(index=False)
-                        st.download_button(
-                            label="📥 Download Embedded CSV",
-                            data=csv,
-                            file_name='embedded_creatives.csv',
-                            mime='text/csv'
-                        )
-                    else:
-                        st.error("❌ Major mismatch detected. Please re-upload and retry.")
-
-    elif uploaded_file and not api_key:
-        st.warning("🔑 Please enter your OpenAI API key to proceed.")
-
+client = None
+if api_key:
+    if is_valid_api_key(api_key):
+        client = openai.OpenAI(api_key=api_key)
     else:
-        st.info("📤 Upload a CSV and paste your API key to start.")
+        st.error("🚫 Invalid API key format!")
 
-# ==== TAB 2: Diversity Picker ====
-with tab2:
-    st.header("🎯 Pick Most Diverse Creatives")
+# ✅ Auto-frame function
+def auto_frame(text):
+    return f"Creative marketing hook. Goal: drive action. Emotion focus. Text: {text}"
 
-    uploaded_diverse = st.file_uploader("📤 Upload your Embedded CSV", type=["csv"], key="diverse")
+# ✅ Emotion prediction function
+def predict_emotion(text):
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a marketing psychology expert. Choose ONE main emotion: fear, hope, greed, excitement, sadness, curiosity, envy, pride, anger, love, other."},
+                {"role": "user", "content": f"What is the main emotion triggered by this creative? '{text}'"}
+            ],
+            temperature=0.2,
+            max_tokens=10,
+        )
+        emotion = response.choices[0].message.content.strip()
+        return emotion
+    except Exception as e:
+        return "Unknown"
 
-    if uploaded_diverse:
-        df = pd.read_csv(uploaded_diverse)
+# 🚀 Main logic
+if uploaded_file and client:
+    try:
+        df = pd.read_csv(uploaded_file, encoding="utf-8")
+    except UnicodeDecodeError:
+        df = pd.read_csv(uploaded_file, encoding="latin1")
 
-        if 'embedding' not in df.columns:
-            st.error("🚫 The CSV must have an 'embedding' column!")
-        else:
-            try:
-                df['embedding'] = df['embedding'].apply(lambda x: np.fromstring(x.strip('[]'), sep=','))
-            except Exception as e:
-                st.error(f"Embedding parsing error: {e}")
+    if 'Text' not in df.columns:
+        st.error("🚫 Your CSV must have a 'Text' column.")
+    else:
+        if st.button("🚀 Process Creatives"):
+            with st.spinner('Working... 🚀'):
+                progress = st.progress(0)
 
-            k = st.slider('How many diverse creatives?', 2, min(10, len(df)), 5, key="slider_diverse")
+                framed_texts = []
+                embeddings = []
+                emotions = []
 
-            if st.button("🚀 Pick Diverse"):
-                selected = [0]
-                embeddings = np.vstack(df['embedding'].to_numpy())
+                for idx, row in df.iterrows():
+                    raw_text = str(row['Text'])
+                    if not raw_text.strip():
+                        framed_texts.append("")
+                        embeddings.append(None)
+                        emotions.append("Unknown")
+                        continue
 
-                while len(selected) < k:
-                    remaining = list(set(range(len(df))) - set(selected))
-                    scores = []
-                    for idx in remaining:
-                        similarity = cosine_similarity(embeddings[idx].reshape(1, -1), embeddings[selected]).mean()
-                        scores.append((idx, similarity))
-                    next_idx = min(scores, key=lambda x: x[1])[0]
-                    selected.append(next_idx)
+                    framed = auto_frame(raw_text)
+                    framed_texts.append(framed)
 
-                diverse_df = df.iloc[selected][['Text']]
-                st.success(f"🎯 Picked {k} diverse creatives!")
-                st.dataframe(diverse_df)
+                    # Embed
+                    try:
+                        response = client.embeddings.create(
+                            input=framed,
+                            model="text-embedding-ada-002"
+                        )
+                        embedding = response.data[0].embedding
+                        embeddings.append(embedding)
+                    except Exception as e:
+                        embeddings.append(None)
 
-                csv = diverse_df.to_csv(index=False)
+                    # Predict Emotion
+                    emotion = predict_emotion(raw_text)
+                    emotions.append(emotion)
+
+                    progress.progress((idx + 1) / len(df))
+                    time.sleep(0.3)  # slight pacing
+
+                # Assign results
+                df['Framed Text'] = framed_texts
+                df['Embedding'] = embeddings
+                df['Predicted Emotion'] = emotions
+
+                st.success("✅ Processing complete!")
+                st.dataframe(df)
+
+                # Download
+                csv = df.to_csv(index=False)
                 st.download_button(
-                    label="📥 Download Diverse Creatives",
+                    label="📥 Download Full PRO CSV",
                     data=csv,
-                    file_name='diverse_creatives.csv',
+                    file_name='pro_creative_analysis.csv',
                     mime='text/csv'
                 )
+
+elif uploaded_file and not api_key:
+    st.warning("🔑 Please enter your OpenAI API key to continue.")
+
+else:
+    st.info("📤 Upload a CSV and enter your OpenAI API key to begin.")
+
