@@ -1,8 +1,9 @@
-# 📄 safe-ai-receipt-finder-mvp/streamlit_app.py (Fresh Clean Version)
+# 📄 safe-ai-receipt-finder-mvp/streamlit_app.py (Pro Version)
 
 import streamlit as st
 import pandas as pd
 import openai
+import time
 
 # Set page config
 st.set_page_config(page_title="🧠 Safe AI Receipt Finder - Creative Scoring MVP", layout="centered")
@@ -30,15 +31,32 @@ if uploaded_file and client:
     else:
         if st.button("🧠 Embed All Hooks"):
             with st.spinner('Embedding texts...'):
-                # Embed all texts
-                def embed_text(text):
-                    response = client.embeddings.create(
-                        input=text,
-                        model="text-embedding-ada-002"
-                    )
-                    return response.data[0].embedding
+                progress_bar = st.progress(0)
+                embeddings = []
+                total = len(df)
 
-                df['embedding'] = df['Text'].apply(embed_text)
+                for idx, text in enumerate(df['Text']):
+                    success = False
+                    retries = 3
+                    while not success and retries > 0:
+                        try:
+                            response = client.embeddings.create(
+                                input=text,
+                                model="text-embedding-ada-002"
+                            )
+                            embeddings.append(response.data[0].embedding)
+                            success = True
+                        except openai.RateLimitError:
+                            retries -= 1
+                            time.sleep(5)  # wait before retrying
+                        except Exception as e:
+                            st.error(f"Unexpected error: {e}")
+                            embeddings.append(None)
+                            success = True  # Skip to next after error
+                    progress_bar.progress((idx + 1) / total)
+                    time.sleep(1)  # gentle wait to avoid rate limits
+
+                df['embedding'] = embeddings
 
                 st.success("✅ Embedding complete!")
                 st.dataframe(df.head())
