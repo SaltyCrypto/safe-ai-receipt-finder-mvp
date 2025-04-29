@@ -1,57 +1,59 @@
+# 📄 safe-ai-receipt-finder-mvp/streamlit_app.py (Fresh Clean Version)
+
 import streamlit as st
 import pandas as pd
 import openai
 
-# Set Streamlit page config
-st.set_page_config(page_title="🧾 Safe AI Receipt Finder - Creative Scoring MVP", layout="wide")
-st.title("🧾 Safe AI Receipt Finder - Creative Scoring MVP")
+# Set page config
+st.set_page_config(page_title="🧠 Safe AI Receipt Finder - Creative Scoring MVP", layout="centered")
 
-st.markdown("""
-Upload your **hooks or user quotes** CSV, 
-enter your **OpenAI API Key**, 
-and embed your creatives for smarter clustering and scoring.
-""")
+# Title
+st.title("🧠 Safe AI Receipt Finder - Creative Scoring MVP")
 
-# Upload CSV
-uploaded_file = st.file_uploader("📤 Upload your CSV file", type=["csv"])
+# File uploader
+uploaded_file = st.file_uploader("Upload your CSV file", type=["csv"])
 
-# API Key input (masked)
-api_key = st.text_input("🔑 Enter your OpenAI API Key", type="password")
+# API key input
+api_key = st.text_input("Paste your OpenAI API key", type="password")
 
-# Function to embed text
-def embed_text(text):
-    response = openai.Embedding.create(
-        input=text,
-        model="text-embedding-ada-002"
-    )
-    return response['data'][0]['embedding']
+# Initialize OpenAI client if API key provided
+client = None
+if api_key:
+    client = openai.OpenAI(api_key=api_key)
 
-# Main app logic
-if uploaded_file is not None:
+# Main logic
+if uploaded_file and client:
     df = pd.read_csv(uploaded_file)
-    st.success("✅ File uploaded successfully!")
-    st.write("### 🔍 Preview of Your Data", df.head())
 
-    if "Text" not in df.columns:
-        st.error("❌ Your CSV must contain a column named 'Text'. Please fix and upload again.")
+    if 'Text' not in df.columns:
+        st.error("Your CSV must have a 'Text' column.")
     else:
         if st.button("🧠 Embed All Hooks"):
-            if api_key:
-                openai.api_key = api_key
-                with st.spinner("🔄 Embedding in progress... Please wait."):
-                    df['embedding'] = df['Text'].apply(embed_text)
+            with st.spinner('Embedding texts...'):
+                # Embed all texts
+                def embed_text(text):
+                    response = client.embeddings.create(
+                        input=text,
+                        model="text-embedding-ada-002"
+                    )
+                    return response.data[0].embedding
+
+                df['embedding'] = df['Text'].apply(embed_text)
+
                 st.success("✅ Embedding complete!")
+                st.dataframe(df.head())
 
-                st.write("### 📈 Preview of Embedded Data", df.head())
-
+                # Download CSV button
+                csv = df.to_csv(index=False)
                 st.download_button(
-                    label="📥 Download CSV with Embeddings",
-                    data=df.to_csv(index=False),
-                    file_name="embedded_creatives.csv",
-                    mime="text/csv"
+                    label="📥 Download Embedded CSV",
+                    data=csv,
+                    file_name='embedded_creatives.csv',
+                    mime='text/csv'
                 )
-            else:
-                st.warning("⚠️ Please enter your OpenAI API key to proceed.")
 
-st.markdown("---")
-st.caption("Built by 🚀 - Safe AI Receipt Finder Project")
+elif uploaded_file and not api_key:
+    st.warning("🔑 Please enter your OpenAI API key to proceed.")
+
+else:
+    st.info("📤 Upload a CSV and paste your API key to start.")
