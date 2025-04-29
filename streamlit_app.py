@@ -12,7 +12,7 @@ st.title("🧠 Safe AI Receipt Finder - Creative Scoring & Diversity Picker")
 # Create Tabs
 tab1, tab2 = st.tabs(["🔹 Embed Creatives", "🔹 Pick Diverse Creatives"])
 
-# ==== TAB 1: Embedding ====
+# ==== TAB 1: Embedding Creatives ====
 with tab1:
     st.header("📤 Upload and Embed Creatives")
     uploaded_file = st.file_uploader("Upload your CSV file (Max 200 rows)", type=["csv"], key="embed")
@@ -36,7 +36,7 @@ with tab1:
         if len(df) > 200:
             st.error("🚫 Upload limited to 200 rows maximum. Please upload a smaller file.")
         elif 'Text' not in df.columns:
-            st.error("Your CSV must have a 'Text' column.")
+            st.error("🚫 Your CSV must have a 'Text' column.")
         else:
             if st.button("🧠 Embed All Hooks"):
                 with st.spinner('Embedding texts...'):
