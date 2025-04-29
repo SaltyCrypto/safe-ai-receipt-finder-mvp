@@ -1,121 +1,39 @@
-# 📄 safe-ai-receipt-finder-mvp/streamlit_app.py (PRO Mode)
+# ==== TAB 3: Emotion Scoring ====
+with tab3:
+    st.header("🎯 Rank Creatives by Target Emotion")
 
-import streamlit as st
-import pandas as pd
-import numpy as np
-import openai
-import time
-from sklearn.metrics.pairwise import cosine_similarity
+    uploaded_score = st.file_uploader("📤 Upload Embedded CSV with Emotion", type=["csv"], key="score_emotion")
 
-# 🚀 Set up page
-st.set_page_config(page_title="🧠 Safe AI Receipt Finder PRO", layout="centered")
-st.title("🧠 Safe AI Receipt Finder - PRO Creative Analyzer")
+    if uploaded_score:
+        df = pd.read_csv(uploaded_score)
 
-# 🚀 File uploader
-uploaded_file = st.file_uploader("📤 Upload your CSV (must have 'Text' column)", type=["csv"])
+        if 'Predicted Emotion' not in df.columns or 'Text' not in df.columns:
+            st.error("🚫 CSV must have 'Predicted Emotion' and 'Text' columns!")
+        else:
+            emotions = ['Fear', 'Hope', 'Curiosity', 'Love', 'Greed', 'Excitement', 'Pride', 'Anger', 'Envy', 'Other']
+            target = st.selectbox("🎯 Choose target emotion", emotions)
 
-# 🚀 API Key input
-api_key = st.text_input("🔑 Paste your OpenAI API key here", type="password")
+            def score_match(predicted, target):
+                if pd.isna(predicted): return 0.0
+                predicted = predicted.strip().lower()
+                target = target.strip().lower()
+                if predicted == target:
+                    return 1.0
+                elif target in predicted or predicted in target:
+                    return 0.5
+                else:
+                    return 0.0
 
-# ✅ Validate key
-def is_valid_api_key(key):
-    return key.startswith("sk-") and len(key) > 20
+            df['Emotion Score'] = df['Predicted Emotion'].apply(lambda e: score_match(e, target))
+            df_sorted = df.sort_values(by='Emotion Score', ascending=False)
 
-client = None
-if api_key:
-    if is_valid_api_key(api_key):
-        client = openai.OpenAI(api_key=api_key)
-    else:
-        st.error("🚫 Invalid API key format!")
+            st.success(f"🎯 Ranked by how closely creatives match: **{target}**")
+            st.dataframe(df_sorted[['Text', 'Predicted Emotion', 'Emotion Score']].head(20))
 
-# ✅ Auto-frame function
-def auto_frame(text):
-    return f"Creative marketing hook. Goal: drive action. Emotion focus. Text: {text}"
-
-# ✅ Emotion prediction function
-def predict_emotion(text):
-    try:
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are a marketing psychology expert. Choose ONE main emotion: fear, hope, greed, excitement, sadness, curiosity, envy, pride, anger, love, other."},
-                {"role": "user", "content": f"What is the main emotion triggered by this creative? '{text}'"}
-            ],
-            temperature=0.2,
-            max_tokens=10,
-        )
-        emotion = response.choices[0].message.content.strip()
-        return emotion
-    except Exception as e:
-        return "Unknown"
-
-# 🚀 Main logic
-if uploaded_file and client:
-    try:
-        df = pd.read_csv(uploaded_file, encoding="utf-8")
-    except UnicodeDecodeError:
-        df = pd.read_csv(uploaded_file, encoding="latin1")
-
-    if 'Text' not in df.columns:
-        st.error("🚫 Your CSV must have a 'Text' column.")
-    else:
-        if st.button("🚀 Process Creatives"):
-            with st.spinner('Working... 🚀'):
-                progress = st.progress(0)
-
-                framed_texts = []
-                embeddings = []
-                emotions = []
-
-                for idx, row in df.iterrows():
-                    raw_text = str(row['Text'])
-                    if not raw_text.strip():
-                        framed_texts.append("")
-                        embeddings.append(None)
-                        emotions.append("Unknown")
-                        continue
-
-                    framed = auto_frame(raw_text)
-                    framed_texts.append(framed)
-
-                    # Embed
-                    try:
-                        response = client.embeddings.create(
-                            input=framed,
-                            model="text-embedding-ada-002"
-                        )
-                        embedding = response.data[0].embedding
-                        embeddings.append(embedding)
-                    except Exception as e:
-                        embeddings.append(None)
-
-                    # Predict Emotion
-                    emotion = predict_emotion(raw_text)
-                    emotions.append(emotion)
-
-                    progress.progress((idx + 1) / len(df))
-                    time.sleep(0.3)  # slight pacing
-
-                # Assign results
-                df['Framed Text'] = framed_texts
-                df['Embedding'] = embeddings
-                df['Predicted Emotion'] = emotions
-
-                st.success("✅ Processing complete!")
-                st.dataframe(df)
-
-                # Download
-                csv = df.to_csv(index=False)
-                st.download_button(
-                    label="📥 Download Full PRO CSV",
-                    data=csv,
-                    file_name='pro_creative_analysis.csv',
-                    mime='text/csv'
-                )
-
-elif uploaded_file and not api_key:
-    st.warning("🔑 Please enter your OpenAI API key to continue.")
-
-else:
-    st.info("📤 Upload a CSV and enter your OpenAI API key to begin.")
-
+            csv = df_sorted.to_csv(index=False)
+            st.download_button(
+                label="📥 Download Ranked CSV",
+                data=csv,
+                file_name=f'ranked_creatives_{target.lower()}.csv',
+                mime='text/csv'
+            )
