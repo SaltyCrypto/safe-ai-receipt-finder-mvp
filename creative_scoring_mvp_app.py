@@ -1,7 +1,6 @@
 
 import streamlit as st
 import pandas as pd
-import openai
 
 st.set_page_config(page_title="Creative Scoring MVP", layout="wide")
 
