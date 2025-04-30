@@ -38,14 +38,24 @@ st.sidebar.markdown(f"### ▶️ Step {step_index + 1}: {steps[step_index]}")
 st.progress(step_index / (len(steps) - 1))
 
 # --- API Key Input ---
+st.sidebar.markdown("---")
+if st.session_state.valid_key:
+    openai.api_key = st.session_state.api_key
+    if st.sidebar.button("🔁 Test OpenAI Ping"):
+        try:
+            models = openai.Model.list()
+            st.sidebar.success(f"✅ Connected. {len(models.data)} models available.")
+        except Exception as e:
+            st.sidebar.error(f"❌ Ping failed: {e}")
 st.sidebar.subheader("🔐 API Access")
-api_input = st.sidebar.text_input("Enter OpenAI API Key", type="password")
+api_input = st.sidebar.text_input("Enter OpenAI API Key", type="password").strip()
 if api_input:
     try:
         import openai
         openai.Model.list(api_key=api_input)
         st.session_state.api_key = api_input
         st.session_state.valid_key = True
+        openai.api_key = api_input  # Set global OpenAI key
         st.sidebar.success("✅ API Key Valid")
     except:
         st.sidebar.error("❌ Invalid API Key")
