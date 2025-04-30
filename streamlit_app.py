@@ -1,5 +1,5 @@
-# streamlit_app_pro_v6.py
-# 🚀 Safe AI Receipt Finder – PRO Creative Analyzer (v6.3 with OpenAI SDK 1.x Support)
+# streamlit_app.py
+# 🚀 Safe AI Receipt Finder – PRO Creative Analyzer (v6.3)
 
 import streamlit as st
 import pandas as pd
@@ -59,14 +59,12 @@ api_input = st.sidebar.text_input("Enter OpenAI API Key", type="password").strip
 if api_input:
     try:
         client = OpenAI(api_key=api_input)
-        models = client.models.list()
         st.session_state.api_key = api_input
         st.session_state.valid_key = True
         st.session_state.client = client
         st.sidebar.success("✅ API Key Valid")
     except Exception as e:
         st.sidebar.error(f"❌ API Error: {str(e)}")
-        st.sidebar.info(f"🔍 Using key: {api_input[:6]}...{api_input[-4:]}")
 
 # --- Step: Upload ---
 if st.session_state["step"] == "Upload":
@@ -90,8 +88,10 @@ elif st.session_state["step"] == "Scoring":
                 time.sleep(1)
                 st.session_state.df['score'] = np.random.uniform(3, 9, len(st.session_state.df))
                 st.toast("Scoring complete")
+            st.success("✅ Creatives scored successfully!")
+
         if 'score' in st.session_state.df:
-            cols = [col for col in ['creative_text', 'score'] if col in st.session_state.df.columns]
+            cols = ['creative_text', 'score'] if 'score' in st.session_state.df.columns else ['creative_text']
             st.dataframe(st.session_state.df[cols])
             avg_score = st.session_state.df['score'].mean()
             st.plotly_chart(go.Figure(go.Indicator(
@@ -100,8 +100,7 @@ elif st.session_state["step"] == "Scoring":
                 title={"text": "Average Creative Score"},
                 gauge={"axis": {"range": [0, 10]}}
             )), use_container_width=True)
-            if st.button("Next: Explore Embeddings"):
-                st.session_state["step"] = "Explorer"
+            st.button("Next: Explore Embeddings", disabled='score' not in st.session_state.df, on_click=lambda: st.session_state.update({"step": "Explorer"}))
         else:
             st.warning("No scores found yet. Please click 'Score Creatives' first.")
 
@@ -113,13 +112,23 @@ elif st.session_state["step"] == "Explorer":
             st.session_state.df['x'] = np.random.randn(len(st.session_state.df))
             st.session_state.df['y'] = np.random.randn(len(st.session_state.df))
 
-        if 'score' in st.session_state.df.columns:
-            fig = px.scatter(st.session_state.df, x='x', y='y', color='score', hover_data=['creative_text'])
+        required_cols = {'x', 'y', 'creative_text'}
+        if required_cols.issubset(st.session_state.df.columns) and not st.session_state.df.empty:
+            df = st.session_state.df.dropna(subset=['x', 'y'])
+            if len(df) == 0:
+                st.warning("No valid rows to plot after removing missing coordinates.")
+            else:
+                try:
+                    if 'score' in df.columns:
+                        fig = px.scatter(df, x='x', y='y', color='score', hover_data=['creative_text'])
+                    else:
+                        st.warning("No scores found. You can continue exploring embeddings without them or go back to score.")
+                        fig = px.scatter(df, x='x', y='y', hover_data=['creative_text'])
+                    st.plotly_chart(fig, use_container_width=True)
+                except Exception as e:
+                    st.error(f"Plotting failed: {e}")
         else:
-            st.warning("No scores found. You can continue exploring embeddings without them or go back to score.")
-            fig = px.scatter(st.session_state.df, x='x', y='y', hover_data=['creative_text'])
-
-        st.plotly_chart(fig, use_container_width=True)
+            st.error("❌ Required data is missing or corrupted. Please check your uploaded file.")
 
         col1, col2 = st.columns(2)
         with col1:
@@ -133,13 +142,19 @@ elif st.session_state["step"] == "Explorer":
 elif st.session_state["step"] == "Clustering":
     st.title("📚 Topic Clustering Dashboard")
     if st.session_state.df is not None:
-        k = st.slider("Number of clusters", 2, 10, 4)
-        st.session_state.df['cluster'] = np.random.randint(0, k, size=len(st.session_state.df))
-        fig = px.scatter(st.session_state.df, x='x', y='y', color='cluster', hover_data=['creative_text'])
-        st.plotly_chart(fig, use_container_width=True)
-        st.dataframe(st.session_state.df[['creative_text', 'cluster']])
-        if st.button("Next: Optimize Creatives"):
-            st.session_state["step"] = "Optimization"
+        required_cols = {'x', 'y', 'creative_text'}
+        if required_cols.issubset(st.session_state.df.columns) and not st.session_state.df.empty:
+            k = st.slider("Number of clusters", 2, 10, 4)
+            st.session_state.df['cluster'] = np.random.randint(0, k, size=len(st.session_state.df))
+            fig = px.scatter(st.session_state.df, x='x', y='y', color='cluster', hover_data=['creative_text'])
+            st.plotly_chart(fig, use_container_width=True)
+            st.dataframe(st.session_state.df[['creative_text', 'cluster']])
+            st.info("Each color group represents a cluster of similar creative themes.")
+        else:
+            st.error("❌ Required data is missing or corrupted. Please go back to scoring and embedding steps.")
+
+    if st.button("Next: Optimize Creatives"):
+        st.session_state["step"] = "Optimization"
 
 # --- Step: Optimization ---
 elif st.session_state["step"] == "Optimization":
@@ -167,20 +182,4 @@ elif st.session_state["step"] == "Optimization":
                 ]
             )
             rewritten = response.choices[0].message.content.strip()
-            st.chat_message("assistant").write(f"✨ Rewritten: {rewritten}")
-            st.info("This version aims for clarity and higher conversion potential.")
-        except Exception as e:
-            st.error(f"Rewrite failed: {e}")
-
-    if st.button("Next: Export Results"):
-        st.session_state["step"] = "Export"
-
-# --- Step: Export ---
-elif st.session_state["step"] == "Export":
-    st.title("📤 Export & Share")
-    if st.session_state.df is not None:
-        st.download_button("Download Enhanced CSV", st.session_state.df.to_csv(index=False), "enhanced_creatives.csv", "text/csv")
-    email = st.text_input("Send summary to email")
-    if st.button("Send"):
-        st.toast("Report sent! (Simulated)")
-    st.success("🎉 You've completed the full creative analysis workflow!")
+            st
