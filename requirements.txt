@@ -1,11 +1,5 @@
-# Core dependencies
-streamlit>=1.28         # Needed for chat_message, toast, newer UI features
-pandas>=2.0
-numpy>=1.24
-plotly>=5.0
+streamlit>=1.40.0
+pandas
 openai>=1.0.0
-
-# Optional/future expansion
-scikit-learn            # For KMeans clustering if real clusters are added
-sentence-transformers   # For embedding-based clustering (future upgrade)
-email-validator         # For validating emails if user invites go beyond simulation
+scikit-learn
+numpy
