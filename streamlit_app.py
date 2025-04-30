@@ -3,44 +3,63 @@ import pandas as pd
 from google.ads.googleads.client import GoogleAdsClient
 from google.ads.googleads.config import load_from_dict
 
-st.set_page_config(page_title="Creative Intelligence - Google Ads", layout="wide")
+# Page config
+st.set_page_config(page_title="Creative Intelligence OS", layout="wide")
 
-if "step" not in st.session_state:
-    st.session_state["step"] = "Upload"
+# Steps setup
+steps = ["Upload", "Scoring", "Keyword Planner", "Emotional Lens", "Explorer", "Export"]
+if "step_idx" not in st.session_state:
+    st.session_state.step_idx = 0
 
+def go_next():
+    if st.session_state.step_idx < len(steps) - 1:
+        st.session_state.step_idx += 1
+
+def go_back():
+    if st.session_state.step_idx > 0:
+        st.session_state.step_idx -= 1
+
+current_step = steps[st.session_state.step_idx]
+
+# UI Layout
 st.sidebar.title("🧭 Navigation")
-st.session_state["step"] = st.sidebar.radio("Go to step", ["Upload", "Scoring", "Keyword Planner", "Explorer"])
+st.sidebar.markdown(f"**Step {st.session_state.step_idx + 1} of {len(steps)}**")
+st.sidebar.progress((st.session_state.step_idx + 1) / len(steps))
+st.sidebar.radio("Jump to step", steps, index=st.session_state.step_idx, key="manual_step")
 
-# Step 1: Upload creatives
-if st.session_state["step"] == "Upload":
-    st.title("📤 Upload Creative CSV")
-    uploaded_file = st.file_uploader("Upload a CSV with a 'creative_text' column", type=["csv"])
-    if uploaded_file:
-        df = pd.read_csv(uploaded_file)
+if st.session_state.manual_step != current_step:
+    st.session_state.step_idx = steps.index(st.session_state.manual_step)
+    current_step = st.session_state.manual_step
+
+st.title(f"🧠 Step {st.session_state.step_idx + 1}: {current_step}")
+
+# Step 1: Upload
+if current_step == "Upload":
+    file = st.file_uploader("📤 Upload CSV with 'creative_text' or 'Text' column", type="csv")
+    if file:
+        df = pd.read_csv(file)
         if "Text" in df.columns:
             df.rename(columns={"Text": "creative_text"}, inplace=True)
         if "creative_text" not in df.columns:
-            st.error("CSV must contain a 'creative_text' column.")
+            st.error("Missing 'creative_text' column.")
         else:
             st.session_state.df = df
-            st.success("✅ Creatives uploaded successfully!")
+            st.success("✅ File uploaded!")
             st.dataframe(df)
 
-# Step 2: Scoring (placeholder)
-elif st.session_state["step"] == "Scoring":
-    st.title("📊 Scoring Engine")
+# Step 2: Scoring
+elif current_step == "Scoring":
     if "df" in st.session_state:
         df = st.session_state.df.copy()
-        df["score"] = df["creative_text"].apply(lambda x: len(str(x)) % 10 + 1)  # Placeholder scoring logic
+        df["score"] = df["creative_text"].apply(lambda x: len(str(x)) % 10 + 1)
         st.session_state.df = df
+        st.success("✅ Creatives scored.")
         st.dataframe(df)
     else:
-        st.warning("⚠️ Please upload creative data first.")
+        st.warning("Upload data first.")
 
 # Step 3: Keyword Planner
-elif st.session_state["step"] == "Keyword Planner":
-    st.title("🔍 Keyword Planner Explorer")
-
+elif current_step == "Keyword Planner":
     config_dict = {
         "developer_token": st.secrets["google_ads"]["developer_token"],
         "client_id": st.secrets["google_ads"]["client_id"],
@@ -50,69 +69,75 @@ elif st.session_state["step"] == "Keyword Planner":
     }
 
     try:
-        client_gads = GoogleAdsClient.load_from_dict(config_dict)
+        client = GoogleAdsClient.load_from_dict(config_dict)
     except Exception as e:
-        st.error(f"Google Ads connection failed: {e}")
+        st.error(f"Google Ads error: {e}")
         st.stop()
 
     customer_id = "1745036270"
-
-    seed_keyword = st.text_input("💡 Seed Keyword", "life insurance")
-    geo_map = {
+    keyword = st.text_input("💡 Seed keyword", "life insurance")
+    geo = st.selectbox("🌍 Geo", {
         "United States": "geoTargetConstants/2840",
-        "United Kingdom": "geoTargetConstants/2826",
-        "Canada": "geoTargetConstants/2124",
-        "Australia": "geoTargetConstants/2036",
-    }
-    geo = st.selectbox("🌍 GEO", list(geo_map.keys()))
-    geo_target = geo_map[geo]
-    lang_map = {"English": "1000", "Spanish": "1003", "French": "1002"}
-    lang = st.selectbox("🈯 Language", list(lang_map.keys()))
-    lang_code = lang_map[lang]
-    min_comp = st.selectbox("🎯 Min Competition", ["LOW", "MEDIUM", "HIGH", "ANY"], index=3)
-    min_cpc = st.number_input("💰 Min CPC (μ)", 0, value=0)
-    max_cpc = st.number_input("💰 Max CPC (μ)", 0, value=10_000_000)
+        "UK": "geoTargetConstants/2826",
+        "Canada": "geoTargetConstants/2124"
+    }.items())
+    lang = st.selectbox("🈯 Language", {"English": "1000", "Spanish": "1003"}.items())
 
     if st.button("🔎 Fetch Keyword Ideas"):
         try:
-            kp_service = client_gads.get_service("KeywordPlanIdeaService")
-            request = client_gads.get_type("GenerateKeywordIdeasRequest")
+            service = client.get_service("KeywordPlanIdeaService")
+            request = client.get_type("GenerateKeywordIdeasRequest")
             request.customer_id = customer_id
-            request.language = lang_code
-            request.geo_target_constants.append(geo_target)
-            request.keyword_seed.keywords.append(seed_keyword)
+            request.language = lang[1]
+            request.geo_target_constants.append(geo[1])
+            request.keyword_seed.keywords.append(keyword)
 
-            response = kp_service.generate_keyword_ideas(request=request)
-            results = []
-            for idea in response:
-                metrics = idea.keyword_idea_metrics
-                if min_comp != "ANY" and metrics.competition.name != min_comp:
-                    continue
-                if (
-                    metrics.low_top_of_page_bid_micros < min_cpc
-                    or metrics.high_top_of_page_bid_micros > max_cpc
-                ):
-                    continue
-                results.append({
-                    "Keyword": idea.text,
-                    "Avg Monthly Searches": metrics.avg_monthly_searches,
-                    "Competition": metrics.competition.name,
-                    "Low CPC (μ)": metrics.low_top_of_page_bid_micros,
-                    "High CPC (μ)": metrics.high_top_of_page_bid_micros
-                })
-
-            df = pd.DataFrame(results)
+            ideas = service.generate_keyword_ideas(request=request)
+            result = [{
+                "Keyword": idea.text,
+                "Searches": idea.keyword_idea_metrics.avg_monthly_searches,
+                "Competition": idea.keyword_idea_metrics.competition.name,
+                "Low CPC": idea.keyword_idea_metrics.low_top_of_page_bid_micros,
+                "High CPC": idea.keyword_idea_metrics.high_top_of_page_bid_micros
+            } for idea in ideas]
+            df = pd.DataFrame(result)
             st.session_state.df = df
+            st.success("✅ Keywords pulled")
             st.dataframe(df)
-            st.success(f"✅ Pulled {len(df)} keyword ideas")
-
         except Exception as e:
-            st.error(f"Google Ads API Error: {e}")
+            st.error(f"Keyword error: {e}")
 
-# Step 4: Explorer (placeholder)
-elif st.session_state["step"] == "Explorer":
-    st.title("🔎 Creative Explorer")
+# Step 4: Emotional Lens (placeholder logic)
+elif current_step == "Emotional Lens":
+    if "df" in st.session_state:
+        df = st.session_state.df.copy()
+        df["emotion"] = df["creative_text"].apply(lambda x: "Curiosity" if "?" in str(x) else "Neutral")
+        df["suggested_rewrite"] = df["creative_text"].apply(lambda x: f"🔥 {x}")
+        st.session_state.df = df
+        st.success("🧠 Emotion analysis added")
+        st.dataframe(df)
+    else:
+        st.warning("Upload or generate creatives first.")
+
+# Step 5: Explorer
+elif current_step == "Explorer":
     if "df" in st.session_state:
         st.dataframe(st.session_state.df)
     else:
-        st.warning("⚠️ No data loaded.")
+        st.warning("No data loaded.")
+
+# Step 6: Export
+elif current_step == "Export":
+    if "df" in st.session_state:
+        st.download_button("⬇️ Download Results", data=st.session_state.df.to_csv(index=False), file_name="creative_output.csv")
+    else:
+        st.warning("Nothing to export.")
+
+# Navigation Buttons
+col1, col2, col3 = st.columns([1, 2, 1])
+with col1:
+    if st.session_state.step_idx > 0:
+        st.button("⬅️ Back", on_click=go_back)
+with col3:
+    if st.session_state.step_idx < len(steps) - 1:
+        st.button("Next ➡️", on_click=go_next)
