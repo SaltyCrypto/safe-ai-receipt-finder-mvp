@@ -25,6 +25,20 @@ def init_state():
             st.session_state[k] = v
 init_state()
 
+# --- Navigation Buttons ---
+def nav_buttons():
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("⬅️ Back"):
+            idx = steps.index(st.session_state["step"])
+            if idx > 0:
+                st.session_state["step"] = steps[idx - 1]
+    with col2:
+        if st.button("Next ➡️"):
+            idx = steps.index(st.session_state["step"])
+            if idx < len(steps) - 1:
+                st.session_state["step"] = steps[idx + 1]
+
 # --- Sidebar Progress ---
 steps = ["Upload", "Scoring", "Explorer", "Clustering", "Optimization", "Export"]
 st.sidebar.title("🧠 Creative Workflow")
@@ -53,12 +67,21 @@ if st.session_state["step"] == "Upload":
     st.title("📂 Upload Creative CSV")
     uploaded = st.file_uploader("Upload a CSV with 'creative_text' column", type="csv")
     if uploaded:
-        st.session_state.df = pd.read_csv(uploaded)
+        df = pd.read_csv(uploaded)
+
+        # Auto-rename 'Text' to 'creative_text' if needed
+        if "creative_text" not in df.columns:
+            if "Text" in df.columns:
+                df.rename(columns={"Text": "creative_text"}, inplace=True)
+                st.info("🛠️ Renamed 'Text' column to 'creative_text'.")
+            else:
+                st.warning("❗ 'creative_text' column not found. Please check your CSV.")
+
+        st.session_state.df = df
         st.success("✅ Uploaded successfully.")
-        st.markdown(f"**{len(st.session_state.df)} hooks loaded.**")
-        st.dataframe(st.session_state.df.head(10))
-        if st.button("Next: Score Creatives"):
-            st.session_state["step"] = "Scoring"
+        st.markdown(f"**{len(df)} hooks loaded.**")
+        st.dataframe(df.head(10))
+    nav_buttons()
 
 # --- Scoring Step ---
 elif st.session_state["step"] == "Scoring":
@@ -84,9 +107,9 @@ elif st.session_state["step"] == "Scoring":
                 title={"text": "Avg Score"},
                 gauge={"axis": {"range": [0, 10]}}
             )), use_container_width=True)
-            st.button("Next: Explore Embeddings", disabled='score' not in st.session_state.df, on_click=lambda: st.session_state.update({"step": "Explorer"}))
         else:
             st.warning("Please click 'Score Creatives' to continue.")
+    nav_buttons()
 
 # --- Explorer Step ---
 elif st.session_state["step"] == "Explorer":
@@ -112,14 +135,7 @@ elif st.session_state["step"] == "Explorer":
                 st.error(f"Plotting failed: {e}")
     else:
         st.error("Required columns missing.")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("⬅️ Back to Scoring"):
-            st.session_state["step"] = "Scoring"
-    with col2:
-        if st.button("Next: Cluster Creatives"):
-            st.session_state["step"] = "Clustering"
+    nav_buttons()
 
 # --- Clustering Step ---
 elif st.session_state["step"] == "Clustering":
@@ -134,8 +150,7 @@ elif st.session_state["step"] == "Clustering":
             st.dataframe(st.session_state.df[['creative_text', 'cluster']])
         else:
             st.error("Required data missing.")
-    if st.button("Next: Optimize Creatives"):
-        st.session_state["step"] = "Optimization"
+    nav_buttons()
 
 # --- Optimization Step ---
 elif st.session_state["step"] == "Optimization":
@@ -167,9 +182,7 @@ elif st.session_state["step"] == "Optimization":
             st.error(f"Rewrite failed: {e}")
     elif not st.session_state.valid_key:
         st.warning("Enter OpenAI key in the sidebar first.")
-
-    if st.button("Next: Export Results"):
-        st.session_state["step"] = "Export"
+    nav_buttons()
 
 # --- Export Step ---
 elif st.session_state["step"] == "Export":
@@ -182,3 +195,4 @@ elif st.session_state["step"] == "Export":
         st.success("🎉 Workflow complete!")
     else:
         st.warning("Nothing to export.")
+    nav_buttons()
