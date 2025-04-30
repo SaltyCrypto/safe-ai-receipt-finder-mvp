@@ -1,106 +1,60 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
-import time
-from openai import OpenAI
 from google.ads.googleads.client import GoogleAdsClient
-from google.ads.googleads.errors import GoogleAdsException
+from google.ads.googleads.config import load_from_dict
 
-# --- Page setup ---
-st.set_page_config(page_title="Creative Analyzer PRO", layout="wide")
+st.set_page_config(page_title="Creative Intelligence - Google Ads", layout="wide")
 
-# --- Initialize Session State ---
-def init_state():
-    defaults = {
-        "df": None,
-        "step": "Upload",
-        "api_key": None,
-        "valid_key": False,
-        "client": None,
-        "x": None,
-        "y": None,
-        "cluster": None
-    }
-    for k, v in defaults.items():
-        if k not in st.session_state:
-            st.session_state[k] = v
-init_state()
+if "step" not in st.session_state:
+    st.session_state["step"] = "Upload"
 
-# --- Step Navigation ---
-steps = ["Upload", "Scoring", "Keyword Planner", "Explorer", "Clustering", "Optimization", "Export"]
-step_index = steps.index(st.session_state["step"])
-st.sidebar.title("🧠 Creative Workflow")
-st.sidebar.markdown(f"### ▶️ Step {step_index + 1}: {steps[step_index]}")
-st.sidebar.progress(step_index / (len(steps) - 1))
-st.markdown("#### Progress")
-st.progress(step_index / (len(steps) - 1))
+st.sidebar.title("🧭 Navigation")
+st.session_state["step"] = st.sidebar.radio("Go to step", ["Upload", "Scoring", "Keyword Planner", "Explorer"])
 
-# --- API Key ---
-st.sidebar.markdown("---")
-st.sidebar.subheader("🔐 API Access")
-api_input = st.sidebar.text_input("Enter OpenAI API Key", type="password").strip()
-if api_input:
-    try:
-        client = OpenAI(api_key=api_input)
-        st.session_state.api_key = api_input
-        st.session_state.valid_key = True
-        st.session_state.client = client
-        st.sidebar.success("✅ API Key Valid")
-    except Exception as e:
-        st.sidebar.error(f"❌ API Error: {str(e)}")
-
-# --- Step 1: Upload ---
+# Step 1: Upload creatives
 if st.session_state["step"] == "Upload":
-    st.title("📂 Upload Creative CSV")
-    uploaded = st.file_uploader("Upload a CSV with 'creative_text' column", type="csv")
-    if uploaded:
-        df = pd.read_csv(uploaded)
-        if "Text" in df.columns and "creative_text" not in df.columns:
+    st.title("📤 Upload Creative CSV")
+    uploaded_file = st.file_uploader("Upload a CSV with a 'creative_text' column", type=["csv"])
+    if uploaded_file:
+        df = pd.read_csv(uploaded_file)
+        if "Text" in df.columns:
             df.rename(columns={"Text": "creative_text"}, inplace=True)
-            st.info("🛠️ Renamed 'Text' column to 'creative_text' automatically.")
-        elif "creative_text" not in df.columns:
-            st.warning("❗ No 'creative_text' column found.")
-        st.session_state.df = df
-        st.success("✅ Uploaded successfully.")
-        st.markdown(f"**{len(df)} hooks loaded.**")
-        st.dataframe(df.head(10))
-        if st.button("Next: Score Creatives"):
-            st.session_state["step"] = "Scoring"
+        if "creative_text" not in df.columns:
+            st.error("CSV must contain a 'creative_text' column.")
+        else:
+            st.session_state.df = df
+            st.success("✅ Creatives uploaded successfully!")
+            st.dataframe(df)
 
-# --- Step 2: Scoring ---
+# Step 2: Scoring (placeholder)
 elif st.session_state["step"] == "Scoring":
     st.title("📊 Scoring Engine")
-    if st.session_state.df is not None:
-        if st.button("Score Creatives"):
-            with st.spinner("Scoring..."):
-                time.sleep(1)
-                st.session_state.df["score"] = np.random.uniform(3, 9, len(st.session_state.df))
-                st.toast("Scoring complete")
-            st.success("✅ Creatives scored successfully!")
-        if 'score' in st.session_state.df:
-            cols = [col for col in ['creative_text', 'score'] if col in st.session_state.df.columns]
-            if cols:
-                st.dataframe(st.session_state.df[cols])
-            avg = st.session_state.df['score'].mean()
-            st.plotly_chart(go.Figure(go.Indicator(
-                mode="gauge+number",
-                value=avg,
-                title={"text": "Avg Score"},
-                gauge={"axis": {"range": [0, 10]}}
-            )), use_container_width=True)
-            if st.button("Next: Keyword Planner"):
-                st.session_state["step"] = "Keyword Planner"
-        else:
-            st.warning("Please click 'Score Creatives' to continue.")
-    if st.button("⬅️ Back to Upload"):
-        st.session_state["step"] = "Upload"
+    if "df" in st.session_state:
+        df = st.session_state.df.copy()
+        df["score"] = df["creative_text"].apply(lambda x: len(str(x)) % 10 + 1)  # Placeholder scoring logic
+        st.session_state.df = df
+        st.dataframe(df)
+    else:
+        st.warning("⚠️ Please upload creative data first.")
 
-# --- Step 3: Keyword Planner ---
+# Step 3: Keyword Planner
 elif st.session_state["step"] == "Keyword Planner":
     st.title("🔍 Keyword Planner Explorer")
-    client_gads = GoogleAdsClient.load_from_storage("google-ads.yaml")
+
+    config_dict = {
+        "developer_token": st.secrets["google_ads"]["developer_token"],
+        "client_id": st.secrets["google_ads"]["client_id"],
+        "client_secret": st.secrets["google_ads"]["client_secret"],
+        "refresh_token": st.secrets["google_ads"]["refresh_token"],
+        "use_proto_plus": True
+    }
+
+    try:
+        client_gads = GoogleAdsClient.load_from_dict(config_dict)
+    except Exception as e:
+        st.error(f"Google Ads connection failed: {e}")
+        st.stop()
+
     customer_id = "1745036270"
 
     seed_keyword = st.text_input("💡 Seed Keyword", "life insurance")
@@ -134,7 +88,10 @@ elif st.session_state["step"] == "Keyword Planner":
                 metrics = idea.keyword_idea_metrics
                 if min_comp != "ANY" and metrics.competition.name != min_comp:
                     continue
-                if metrics.low_top_of_page_bid_micros < min_cpc or metrics.high_top_of_page_bid_micros > max_cpc:
+                if (
+                    metrics.low_top_of_page_bid_micros < min_cpc
+                    or metrics.high_top_of_page_bid_micros > max_cpc
+                ):
                     continue
                 results.append({
                     "Keyword": idea.text,
@@ -143,96 +100,19 @@ elif st.session_state["step"] == "Keyword Planner":
                     "Low CPC (μ)": metrics.low_top_of_page_bid_micros,
                     "High CPC (μ)": metrics.high_top_of_page_bid_micros
                 })
+
             df = pd.DataFrame(results)
             st.session_state.df = df
             st.dataframe(df)
             st.success(f"✅ Pulled {len(df)} keyword ideas")
-        except GoogleAdsException as e:
+
+        except Exception as e:
             st.error(f"Google Ads API Error: {e}")
-        except Exception as e:
-            st.error(f"Unexpected error: {e}")
 
-    if st.button("⬅️ Back to Scoring"):
-        st.session_state["step"] = "Scoring"
-    if st.button("Next: Embedding Explorer"):
-        st.session_state["step"] = "Explorer"
-
-# --- Step 4: Explorer ---
+# Step 4: Explorer (placeholder)
 elif st.session_state["step"] == "Explorer":
-    st.title("🧭 Embedding Explorer")
-    if st.session_state["x"] is None and st.session_state.df is not None:
-        st.session_state.df['x'] = np.random.randn(len(st.session_state.df))
-        st.session_state.df['y'] = np.random.randn(len(st.session_state.df))
-    if {'x', 'y', 'creative_text'}.issubset(st.session_state.df.columns):
-        df = st.session_state.df.dropna(subset=['x', 'y'])
-        if len(df) == 0:
-            st.warning("No valid rows to plot.")
-        else:
-            fig = px.scatter(df, x='x', y='y', color=df.get('score'), hover_data=['creative_text'])
-            st.plotly_chart(fig, use_container_width=True)
+    st.title("🔎 Creative Explorer")
+    if "df" in st.session_state:
+        st.dataframe(st.session_state.df)
     else:
-        st.warning("Required data missing.")
-    if st.button("⬅️ Back to Keyword Planner"):
-        st.session_state["step"] = "Keyword Planner"
-    if st.button("Next: Cluster Creatives"):
-        st.session_state["step"] = "Clustering"
-
-# --- Step 5: Clustering ---
-elif st.session_state["step"] == "Clustering":
-    st.title("📚 Clustering")
-    if st.session_state.df is not None and {'x', 'y', 'creative_text'}.issubset(st.session_state.df.columns):
-        k = st.slider("Number of clusters", 2, 10, 4)
-        st.session_state.df['cluster'] = np.random.randint(0, k, size=len(st.session_state.df))
-        fig = px.scatter(st.session_state.df, x='x', y='y', color='cluster', hover_data=['creative_text'])
-        st.plotly_chart(fig, use_container_width=True)
-        st.dataframe(st.session_state.df[['creative_text', 'cluster']])
-    if st.button("⬅️ Back to Explorer"):
-        st.session_state["step"] = "Explorer"
-    if st.button("Next: Optimize Creatives"):
-        st.session_state["step"] = "Optimization"
-
-# --- Step 6: Optimization ---
-elif st.session_state["step"] == "Optimization":
-    st.title("🪄 Optimization")
-    col1, col2 = st.columns(2)
-    with col1:
-        a = st.text_area("Creative A", "Affordable life insurance in 60s")
-    with col2:
-        b = st.text_area("Creative B", "Protect your family for $5/mo")
-    if st.button("Simulate Winner"):
-        winner = a if np.random.rand() > 0.5 else b
-        st.success(f"🏁 Winner: {winner[:50]}...")
-    raw = st.text_area("Rewrite this creative:", "Get $300 off now!")
-    if st.button("Rewrite & Explain") and st.session_state.valid_key:
-        try:
-            res = st.session_state.client.chat.completions.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": "You are a creative marketing assistant."},
-                    {"role": "user", "content": f"Rewrite this creative: {raw}"}
-                ]
-            )
-            rewritten = res.choices[0].message.content.strip()
-            st.chat_message("assistant").write(f"✨ Rewritten: {rewritten}")
-        except Exception as e:
-            st.error(f"Rewrite failed: {e}")
-    elif not st.session_state.valid_key:
-        st.warning("Enter OpenAI key in the sidebar first.")
-    if st.button("⬅️ Back to Clustering"):
-        st.session_state["step"] = "Clustering"
-    if st.button("Next: Export Results"):
-        st.session_state["step"] = "Export"
-
-# --- Step 7: Export ---
-elif st.session_state["step"] == "Export":
-    st.title("📤 Export")
-    if st.session_state.df is not None and not st.session_state.df.empty:
-        st.download_button("Download CSV", st.session_state.df.to_csv(index=False), "enhanced_creatives.csv")
-        email = st.text_input("Send to email")
-        if st.button("Send"):
-            st.toast("Simulated send complete.")
-        st.success("🎉 Workflow complete!")
-    else:
-        st.warning("Nothing to export.")
-    if st.button("⬅️ Back to Optimization"):
-        st.session_state["step"] = "Optimization"
+        st.warning("⚠️ No data loaded.")
