@@ -1,6 +1,20 @@
-streamlit>=1.27.0
-pandas>=2.0.3
-numpy>=1.24.4
-openai>=1.14.0
-scikit-learn>=1.3.0
-plotly>=5.17.0
+# Regenerate the improved requirements.txt with pinned versions and optional packages as comments
+improved_requirements = """\
+# Core dependencies
+streamlit>=1.28         # Needed for chat_message, toast, newer UI features
+pandas>=2.0
+numpy>=1.24
+plotly>=5.0
+openai>=1.0
+
+# Optional/future expansion
+scikit-learn            # For KMeans clustering if real clusters are added
+sentence-transformers   # For embedding-based clustering (future upgrade)
+email-validator         # For validating emails if user invites go beyond simulation
+"""
+
+# Save the improved requirements.txt
+with open("/mnt/data/requirements.txt", "w") as f:
+    f.write(improved_requirements)
+
+"/mnt/data/requirements.txt"
