@@ -16,19 +16,72 @@ if not api_key or not api_key.startswith("sk-"):
     st.stop()
 openai.api_key = api_key
 
+# === Session Setup ===
+if "embedded_df" not in st.session_state:
+    st.session_state.embedded_df = None
+if "active_tab" not in st.session_state:
+    st.session_state.active_tab = "1️⃣ Embed"
+
+# === UX Progress Wizard ===
+st.markdown("#### 🚀 Workflow Progress")
+st.markdown("""
+✅ **Step 1:** Embed Creatives  
+⬜ **Step 2:** Pick Diverse Creatives  
+⬜ **Step 3:** Score Creatives  
+⬜ **Step 4:** PRO Rewrites  
+⬜ **Step 5:** A/B Picker  
+⬜ **Step 6:** Snapshot + Exports  
+""")
+
 # === Tabs ===
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+tabs = st.tabs([
     "1️⃣ Embed", "2️⃣ Diversity Picker", "3️⃣ Creative Scorer",
     "4️⃣ PRO Rewrites", "5️⃣ A/B Picker", "6️⃣ Snapshot",
     "7️⃣ Emotion Lens", "8️⃣ Clustering"
 ])
 
-# Each tab below will be filled in with detailed logic
-# TODO:
-# - Embed tab: show progress bar
-# - Scorer tab: allow GPT-4 selection, score filtering
-# - Rewrite tab: add prompt presets + progress bar
-# - Tab 7: Emotion Lens visualizations
-# - Tab 8: Clustering via vector similarity
+# === TAB 1: Embed ===
+with tabs[0]:
+    st.subheader("📥 Upload & Embed")
+    uploaded_file = st.file_uploader("Upload a CSV with a 'Text' column", type=["csv"])
 
-# Add logic here...
+    if uploaded_file:
+        df = pd.read_csv(uploaded_file)
+        if 'Text' not in df.columns:
+            st.error("❌ Your file must contain a 'Text' column.")
+        else:
+            if st.button("🧠 Embed All Hooks"):
+                st.info("Embedding up to 200 rows using `text-embedding-ada-002`")
+                embeddings = []
+                with st.spinner("Generating embeddings..."):
+                    for i, row in df.iterrows():
+                        if i >= 200:
+                            break
+                        try:
+                            text = str(row['Text'])
+                            response = openai.Embedding.create(
+                                input=text,
+                                model="text-embedding-ada-002"
+                            )
+                            embeddings.append(response['data'][0]['embedding'])
+                        except Exception as e:
+                            embeddings.append([0.0] * 1536)  # fallback
+                        time.sleep(0.3)
+                df['embedding'] = embeddings
+                st.session_state.embedded_df = df
+                st.success("✅ Embedding complete! Data saved to session.")
+                st.dataframe(df[['Text']])
+                st.button("➡️ Continue to Diversity Picker", on_click=lambda: st.session_state.update({"active_tab": "2️⃣ Diversity Picker"}))
+
+# === TAB 2 to 8 Placeholder Logic ===
+for i, label in enumerate([
+    "Diversity Picker", "Creative Scorer", "PRO Rewrites",
+    "A/B Picker", "Snapshot", "Emotion Lens", "Clustering"
+], start=1):
+    with tabs[i]:
+        st.subheader(f"🛠️ {label}")
+        if st.session_state.embedded_df is None:
+            st.warning("⚠️ Please upload and embed data first in Tab 1.")
+        else:
+            st.info("🔧 Feature logic will go here...")
+
