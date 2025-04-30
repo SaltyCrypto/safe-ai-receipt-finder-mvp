@@ -3,11 +3,9 @@ import pandas as pd
 from google.ads.googleads.client import GoogleAdsClient
 from google.ads.googleads.config import load_from_dict
 
-# Page setup
 st.set_page_config(page_title="Creative Intelligence OS", layout="wide")
 
-# Step state tracking
-steps = ["Upload", "Scoring", "Keyword Planner", "Emotional Lens", "Explorer", "Export"]
+steps = ["Upload", "Scoring", "Keyword Planner", "Emotional Lens", "Explorer", "Export", "GPT Rewrite", "Emotion Scoring", "Clustering"]
 if "step_idx" not in st.session_state:
     st.session_state.step_idx = 0
 
@@ -20,10 +18,7 @@ def go_back():
         st.session_state.step_idx -= 1
 
 current_step = steps[st.session_state.step_idx]
-
-# UI and Navigation
 st.sidebar.title("🧭 Navigation")
-st.sidebar.markdown(f"**Step {st.session_state.step_idx + 1} of {len(steps)}**")
 st.sidebar.progress((st.session_state.step_idx + 1) / len(steps))
 st.sidebar.radio("Jump to step", steps, index=st.session_state.step_idx, key="manual_step")
 
@@ -33,7 +28,6 @@ if st.session_state.manual_step != current_step:
 
 st.title(f"🧠 Step {st.session_state.step_idx + 1}: {current_step}")
 
-# Step 1: Upload
 if current_step == "Upload":
     file = st.file_uploader("📤 Upload CSV with 'creative_text' or 'Text' column", type="csv")
     if file:
@@ -47,7 +41,6 @@ if current_step == "Upload":
             st.success("✅ File uploaded!")
             st.dataframe(df)
 
-# Step 2: Scoring
 elif current_step == "Scoring":
     if "df" in st.session_state:
         df = st.session_state.df.copy()
@@ -58,14 +51,13 @@ elif current_step == "Scoring":
     else:
         st.warning("Upload data first.")
 
-# Step 3: Keyword Planner
 elif current_step == "Keyword Planner":
     config_dict = {
         "developer_token": st.secrets["google_ads"]["developer_token"],
         "client_id": st.secrets["google_ads"]["client_id"],
         "client_secret": st.secrets["google_ads"]["client_secret"],
         "refresh_token": st.secrets["google_ads"]["refresh_token"],
-        "login_customer_id": "9816127168",  # Manager Account ID (no dashes)
+        "login_customer_id": "9816127168",  # Manager account ID
         "use_proto_plus": True
     }
 
@@ -75,7 +67,8 @@ elif current_step == "Keyword Planner":
         st.error(f"Google Ads error: {e}")
         st.stop()
 
-    customer_id = "1745036270"
+    customer_id = "2933192176"  # Newly created account
+
     keyword = st.text_input("💡 Seed keyword", "life insurance")
     geo = st.selectbox("🌍 Geo", {
         "United States": "geoTargetConstants/2840",
@@ -108,33 +101,22 @@ elif current_step == "Keyword Planner":
         except Exception as e:
             st.error(f"Keyword error: {e}")
 
-# Step 4: Emotional Lens
+# Placeholder for remaining steps
 elif current_step == "Emotional Lens":
-    if "df" in st.session_state:
-        df = st.session_state.df.copy()
-        df["emotion"] = df["creative_text"].apply(lambda x: "Curiosity" if "?" in str(x) else "Neutral")
-        df["suggested_rewrite"] = df["creative_text"].apply(lambda x: f"🔥 {x}")
-        st.session_state.df = df
-        st.success("🧠 Emotion analysis added")
-        st.dataframe(df)
-    else:
-        st.warning("Upload or generate creatives first.")
-
-# Step 5: Explorer
+    st.write("Emotional Lens Tab Placeholder")
 elif current_step == "Explorer":
     if "df" in st.session_state:
         st.dataframe(st.session_state.df)
-    else:
-        st.warning("No data loaded.")
-
-# Step 6: Export
 elif current_step == "Export":
     if "df" in st.session_state:
         st.download_button("⬇️ Download Results", data=st.session_state.df.to_csv(index=False), file_name="creative_output.csv")
-    else:
-        st.warning("Nothing to export.")
+elif current_step == "GPT Rewrite":
+    st.write("GPT Rewrite Placeholder")
+elif current_step == "Emotion Scoring":
+    st.write("Emotion Scoring Placeholder")
+elif current_step == "Clustering":
+    st.write("Clustering Tab Placeholder")
 
-# Navigation
 col1, col2, col3 = st.columns([1, 2, 1])
 with col1:
     if st.session_state.step_idx > 0:
