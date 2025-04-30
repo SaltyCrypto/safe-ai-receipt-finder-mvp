@@ -37,7 +37,12 @@ st.sidebar.title("🧠 Creative Workflow")
 steps = ["Upload", "Scoring", "Explorer", "Clustering", "Optimization", "Export"]
 step_index = steps.index(st.session_state["step"])
 st.sidebar.markdown(f"### ▶️ Step {step_index + 1}: {steps[step_index]}")
-st.progress(step_index / (len(steps) - 1))
+st.sidebar.progress(step_index / (len(steps) - 1))
+
+# Global top progress bar
+with st.container():
+    st.markdown("#### Progress")
+    st.progress(step_index / (len(steps) - 1))
 
 # --- API Key Input ---
 st.sidebar.markdown("---")
@@ -86,7 +91,8 @@ elif st.session_state["step"] == "Scoring":
                 st.session_state.df['score'] = np.random.uniform(3, 9, len(st.session_state.df))
                 st.toast("Scoring complete")
         if 'score' in st.session_state.df:
-            st.dataframe(st.session_state.df[['creative_text', 'score']])
+            cols = [col for col in ['creative_text', 'score'] if col in st.session_state.df.columns]
+            st.dataframe(st.session_state.df[cols])
             avg_score = st.session_state.df['score'].mean()
             st.plotly_chart(go.Figure(go.Indicator(
                 mode="gauge+number",
@@ -96,6 +102,8 @@ elif st.session_state["step"] == "Scoring":
             )), use_container_width=True)
             if st.button("Next: Explore Embeddings"):
                 st.session_state["step"] = "Explorer"
+        else:
+            st.warning("No scores found yet. Please click 'Score Creatives' first.")
 
 # --- Step: Explorer ---
 elif st.session_state["step"] == "Explorer":
@@ -104,10 +112,22 @@ elif st.session_state["step"] == "Explorer":
         if st.session_state["x"] is None:
             st.session_state.df['x'] = np.random.randn(len(st.session_state.df))
             st.session_state.df['y'] = np.random.randn(len(st.session_state.df))
-        fig = px.scatter(st.session_state.df, x='x', y='y', color='score', hover_data=['creative_text'])
+
+        if 'score' in st.session_state.df.columns:
+            fig = px.scatter(st.session_state.df, x='x', y='y', color='score', hover_data=['creative_text'])
+        else:
+            st.warning("No scores found. You can continue exploring embeddings without them or go back to score.")
+            fig = px.scatter(st.session_state.df, x='x', y='y', hover_data=['creative_text'])
+
         st.plotly_chart(fig, use_container_width=True)
-        if st.button("Next: Cluster Creatives"):
-            st.session_state["step"] = "Clustering"
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("⬅️ Back to Scoring"):
+                st.session_state["step"] = "Scoring"
+        with col2:
+            if st.button("Next: Cluster Creatives"):
+                st.session_state["step"] = "Clustering"
 
 # --- Step: Clustering ---
 elif st.session_state["step"] == "Clustering":
