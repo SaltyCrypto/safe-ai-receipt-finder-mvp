@@ -182,4 +182,24 @@ elif st.session_state["step"] == "Optimization":
                 ]
             )
             rewritten = response.choices[0].message.content.strip()
-            st
+            st.chat_message("assistant").write(f"✨ Rewritten: {rewritten}")
+            st.info("This version aims for clarity and higher conversion potential.")
+        except Exception as e:
+            st.error(f"Rewrite failed: {e}")
+    elif not st.session_state.valid_key:
+        st.warning("Please enter a valid OpenAI API key in the sidebar to use this feature.")
+
+    if st.button("Next: Export Results"):
+        st.session_state["step"] = "Export"
+
+# --- Step: Export ---
+elif st.session_state["step"] == "Export":
+    st.title("📤 Export & Share")
+    if st.session_state.df is not None and not st.session_state.df.empty:
+        st.download_button("Download Enhanced CSV", st.session_state.df.to_csv(index=False), "enhanced_creatives.csv", "text/csv")
+        email = st.text_input("Send summary to email")
+        if st.button("Send"):
+            st.toast("Report sent! (Simulated)")
+        st.success("🎉 You've completed the full creative analysis workflow!")
+    else:
+        st.warning("No processed data available. Please complete earlier steps before exporting.")
