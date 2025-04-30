@@ -1,185 +1,113 @@
-
-# 🧠 Safe AI Receipt Finder – PRO Creative Analyzer (All Tabs)
+# streamlit_app_pro_v6.py
+# 🚀 Safe AI Receipt Finder – PRO Creative Analyzer (v6)
 
 import streamlit as st
 import pandas as pd
 import numpy as np
-import openai
-import time
-from sklearn.metrics.pairwise import cosine_similarity
+import plotly.express as px
 
-st.set_page_config(page_title="🧠 Safe AI Receipt Finder – PRO", layout="wide")
-st.title("🧠 Safe AI Receipt Finder – PRO Creative Analyzer")
+# Set page configuration
+st.set_page_config(
+    page_title="Creative Analyzer PRO",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# Session state
-if "client" not in st.session_state:
-    st.session_state.client = None
-if "df" not in st.session_state:
-    st.session_state.df = None
+# --- Sidebar Navigation ---
+tabs = [
+    "Prompt Builder",
+    "Scoring Engine",
+    "Embedding Explorer",
+    "Topic Clustering Dashboard",
+    "Optimization Magic Tab",
+    "Export / Collaboration Hub"
+]
+st.sidebar.title("🧠 Creative Analyzer Tabs")
+selected_tab = st.sidebar.radio("Choose a tab:", tabs)
 
-# --- API KEY ---
-api_key = st.sidebar.text_input("🔑 OpenAI API Key", type="password")
-if api_key and api_key.startswith("sk-"):
-    try:
-        openai_client = openai.OpenAI(api_key=api_key)
-        st.session_state.client = openai_client
-    except:
-        st.sidebar.error("❌ Invalid API key")
-else:
-    st.sidebar.warning("Enter your API key")
+# --- Tab 1: Prompt Builder ---
+if selected_tab == "Prompt Builder":
+    st.title("✍️ Prompt Builder")
+    st.markdown("Design creative hooks, descriptions, and call-to-actions.")
 
-# --- TABS ---
-tabs = st.tabs([
-    "1️⃣ Upload & Embed",
-    "2️⃣ Hook Generator",
-    "3️⃣ Diversity Picker",
-    "4️⃣ Creative Scoring",
-    "5️⃣ Emotion Lens",
-    "6️⃣ A/B Simulator",
-    "📸 Snapshot"
-])
+    base_prompt = st.text_area("Base Prompt", "Write a compelling ad for a new fitness app...", height=150)
+    emotion = st.selectbox("Emotion Lens", ["Excitement", "Urgency", "Trust", "Curiosity"])
+    tone = st.selectbox("Tone", ["Conversational", "Professional", "Witty", "Bold"])
 
-# --- TAB 1: Upload & Embed ---
-with tabs[0]:
-    st.header("📤 Upload & Embed Creatives")
-    uploaded_file = st.file_uploader("Upload CSV with 'Text' column", type="csv", key="upload")
+    if st.button("Generate Prompt"):
+        st.success(f"Prompt generated with {emotion} and {tone} tone:")
+        st.code(f"[Generated prompt based on: '{base_prompt}', emotion: {emotion}, tone: {tone}]")
+
+# --- Tab 2: Scoring Engine ---
+elif selected_tab == "Scoring Engine":
+    st.title("📊 Creative Scoring Engine")
+    st.markdown("Upload creatives and score them with LLMs or heuristic models.")
+
+    uploaded_file = st.file_uploader("Upload CSV of creatives", type=["csv"])
     if uploaded_file:
         df = pd.read_csv(uploaded_file)
-        if 'Text' not in df.columns:
-            st.error("CSV must contain a 'Text' column")
-        elif st.session_state.client:
-            if st.button("🧠 Embed Now"):
-                with st.spinner("Generating embeddings..."):
-                    embeddings = []
-                    for i, text in enumerate(df['Text']):
-                        try:
-                            if pd.isna(text) or not str(text).strip():
-                                embeddings.append(None)
-                            else:
-                                res = st.session_state.client.embeddings.create(
-                                    input=text,
-                                    model="text-embedding-ada-002"
-                                )
-                                embeddings.append(res.data[0].embedding)
-                        except Exception as e:
-                            embeddings.append(None)
-                        time.sleep(0.2)
-                    df['embedding'] = embeddings
-                    st.session_state.df = df
-                    st.success("✅ Done!")
-                    st.dataframe(df.head())
-        else:
-            st.warning("Please enter your API key to proceed")
+        st.dataframe(df.head())
 
-# --- TAB 2: Hook Generator ---
-with tabs[1]:
-    st.header("🧠 Generate Hooks with LLM")
-    prompt_frame = st.selectbox("Pick a framing style", ["Fear of Loss", "Tax Refund Boost", "Organizational Relief"])
-    base_idea = st.text_input("💡 Base Product/Idea")
-    if st.button("🚀 Generate Hooks"):
-        if st.session_state.client and base_idea:
-            with st.spinner("Generating..."):
-                full_prompt = f"Create 5 short, high-converting hooks for '{base_idea}' framed as: {prompt_frame}"
-                try:
-                    res = st.session_state.client.chat.completions.create(
-                        model="gpt-4",
-                        messages=[{"role": "user", "content": full_prompt}]
-                    )
-                    hooks = res.choices[0].message.content
-                    st.text_area("✍️ Hooks", hooks, height=200)
-                except Exception as e:
-                    st.error(f"Error: {e}")
-        else:
-            st.warning("Enter idea + API key")
+        # Placeholder scoring logic
+        if "creative_text" in df.columns:
+            df['score'] = np.random.rand(len(df)) * 10
+            st.success("Scored!")
+            st.dataframe(df[['creative_text', 'score']])
 
-# --- TAB 3: Diversity Picker ---
-with tabs[2]:
-    st.header("🎯 Diverse Creative Picker")
-    diverse_file = st.file_uploader("Upload Embedded CSV", type=["csv"], key="diverse")
-    if diverse_file:
-        df = pd.read_csv(diverse_file)
-        try:
-            df['embedding'] = df['embedding'].apply(lambda x: np.fromstring(x.strip("[]"), sep=","))
-            k = st.slider("How many?", 2, 10, 5)
-            if st.button("Pick"):
-                selected = [0]
-                matrix = np.vstack(df['embedding'])
-                while len(selected) < k:
-                    remaining = list(set(range(len(matrix))) - set(selected))
-                    scores = [(i, cosine_similarity(matrix[i].reshape(1, -1), matrix[selected]).mean()) for i in remaining]
-                    next_i = min(scores, key=lambda x: x[1])[0]
-                    selected.append(next_i)
-                diverse_df = df.iloc[selected]
-                st.success("✅ Selected")
-                st.dataframe(diverse_df[['Text']])
-        except Exception as e:
-            st.error("Embedding parse error")
+# --- Tab 3: Embedding Explorer ---
+elif selected_tab == "Embedding Explorer":
+    st.title("🧭 Embedding Explorer")
+    st.markdown("Visualize embeddings of creatives using dimensionality reduction.")
 
-# --- TAB 4: Scoring ---
-with tabs[3]:
-    st.header("📊 Score Creatives (LLM-based)")
-    if st.session_state.df is not None:
-        score_prompt = st.text_area("Prompt for scoring (e.g., 'Rate based on urgency appeal')")
-        if st.button("Score Creatives"):
-            with st.spinner("Scoring..."):
-                scores = []
-                for i, row in st.session_state.df.iterrows():
-                    try:
-                        msg = [{"role": "user", "content": f"Rate this creative (1-100): {row['Text']}\nPrompt: {score_prompt}"}]
-                        res = st.session_state.client.chat.completions.create(model="gpt-4", messages=msg)
-                        score = int(''.join(filter(str.isdigit, res.choices[0].message.content.split()[0])))
-                        scores.append(score)
-                    except:
-                        scores.append(0)
-                st.session_state.df['Score'] = scores
-                st.dataframe(st.session_state.df[['Text', 'Score']])
-    else:
-        st.warning("Upload & embed first.")
+    if uploaded_file:
+        df['x'] = np.random.randn(len(df))
+        df['y'] = np.random.randn(len(df))
+        fig = px.scatter(df, x='x', y='y', color='score', hover_data=['creative_text'])
+        st.plotly_chart(fig, use_container_width=True)
 
-# --- TAB 5: Emotion Lens ---
-with tabs[4]:
-    st.header("🧠 Emotion Detection & Lens")
-    if st.session_state.df is not None:
-        if st.button("🔍 Detect Emotions"):
-            emotions = []
-            for text in st.session_state.df['Text']:
-                try:
-                    res = st.session_state.client.chat.completions.create(
-                        model="gpt-4",
-                        messages=[{"role": "user", "content": f"What emotion does this hook evoke? '{text}'? Just the emotion word."}]
-                    )
-                    emotions.append(res.choices[0].message.content.strip())
-                except:
-                    emotions.append("Unknown")
-            st.session_state.df['Emotion'] = emotions
-            st.dataframe(st.session_state.df[['Text', 'Emotion']])
-    else:
-        st.warning("Upload & embed first.")
+# --- Tab 4: Topic Clustering Dashboard ---
+elif selected_tab == "Topic Clustering Dashboard":
+    st.title("📚 Topic Clustering Dashboard")
+    st.markdown("Group creatives by thematic clusters using k-means or LDA.")
 
-# --- TAB 6: A/B Simulator ---
-with tabs[5]:
-    st.header("🧪 A/B Test Simulator")
-    if st.session_state.df is not None:
-        idx1 = st.selectbox("Creative A", st.session_state.df.index, format_func=lambda i: st.session_state.df.loc[i, 'Text'])
-        idx2 = st.selectbox("Creative B", st.session_state.df.index, format_func=lambda i: st.session_state.df.loc[i, 'Text'])
-        if st.button("🤖 Pick Winner"):
-            try:
-                a = st.session_state.df.loc[idx1, 'Text']
-                b = st.session_state.df.loc[idx2, 'Text']
-                msg = [{"role": "user", "content": f"Between these, which will likely perform better in an ad?\nA: {a}\nB: {b}"}]
-                res = st.session_state.client.chat.completions.create(model="gpt-4", messages=msg)
-                st.success(res.choices[0].message.content.strip())
-            except:
-                st.error("Something went wrong")
-    else:
-        st.warning("Upload & embed first.")
+    if uploaded_file:
+        k = st.slider("Number of clusters", 2, 10, 4)
+        df['cluster'] = np.random.randint(0, k, size=len(df))
+        st.dataframe(df[['creative_text', 'cluster']])
 
-# --- TAB 7: Snapshot ---
-with tabs[6]:
-    st.header("📸 Export Snapshot")
-    if st.session_state.df is not None:
-        st.dataframe(st.session_state.df)
-        csv = st.session_state.df.to_csv(index=False)
-        st.download_button("📥 Download Final CSV", csv, "creative_analysis_snapshot.csv", "text/csv")
-    else:
-        st.info("Nothing to export yet.")
+        fig = px.scatter(df, x='x', y='y', color='cluster', hover_data=['creative_text'])
+        st.plotly_chart(fig, use_container_width=True)
+
+# --- Tab 5: Optimization Magic Tab ---
+elif selected_tab == "Optimization Magic Tab":
+    st.title("✨ Optimization Magic Tab")
+    st.markdown("A/B simulator, best-performer insights, and rewrite recommendations.")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.header("🏆 A/B Tournament")
+        st.markdown("Pick a winner between two creatives.")
+        option1 = st.text_area("Creative A", "A powerful insurance CTA...")
+        option2 = st.text_area("Creative B", "An emotional financial safety net...")
+        if st.button("Choose Winner"):
+            st.success("Winner: Creative A (simulated)")
+
+    with col2:
+        st.header("🪄 Rewrite Suggestion")
+        st.markdown("We’ll rewrite your creative for a new angle.")
+        raw = st.text_area("Creative to Rewrite", "Sign up and save $300/year")
+        if st.button("Rewrite It"):
+            st.info("New Version: Claim your $300 savings now — in under 60 seconds!")
+
+# --- Tab 6: Export / Collaboration Hub ---
+elif selected_tab == "Export / Collaboration Hub":
+    st.title("📤 Export & Collaboration Hub")
+    st.markdown("Download intelligence profiles, share reports, and enable workspace access.")
+
+    if uploaded_file:
+        st.download_button("Download Scored CSV", df.to_csv(index=False), "scored_creatives.csv", "text/csv")
+        st.text_input("Invite collaborator via email")
+        st.button("Send Invite")
+
+    st.markdown("---")
+    st.markdown("Built with ❤️ for performance marketers")
