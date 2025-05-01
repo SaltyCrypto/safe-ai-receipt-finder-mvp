@@ -5,7 +5,6 @@ from google.ads.googleads.config import load_from_dict
 
 st.set_page_config(page_title="Creative Intelligence OS", layout="wide")
 
-steps = ["Upload", "Scoring", "Keyword Planner", "Emotional Lens", "Explorer", "Export", "GPT Rewrite", "Emotion Scoring", "Clustering"]
 if "step_idx" not in st.session_state:
     st.session_state.step_idx = 0
 
@@ -102,8 +101,6 @@ elif current_step == "Keyword Planner":
             st.error(f"Keyword error: {e}")
 
 # Placeholder for remaining steps
-elif current_step == "Emotional Lens":
-    st.write("Emotional Lens Tab Placeholder")
 elif current_step == "Explorer":
     if "df" in st.session_state:
         st.dataframe(st.session_state.df)
@@ -111,11 +108,7 @@ elif current_step == "Export":
     if "df" in st.session_state:
         st.download_button("⬇️ Download Results", data=st.session_state.df.to_csv(index=False), file_name="creative_output.csv")
 elif current_step == "GPT Rewrite":
-    st.write("GPT Rewrite Placeholder")
-elif current_step == "Emotion Scoring":
-    st.write("Emotion Scoring Placeholder")
 elif current_step == "Clustering":
-    st.write("Clustering Tab Placeholder")
 
 col1, col2, col3 = st.columns([1, 2, 1])
 with col1:
@@ -124,3 +117,142 @@ with col1:
 with col3:
     if st.session_state.step_idx < len(steps) - 1:
         st.button("Next ➡️", on_click=go_next)
+
+elif current_step == "Emotional Lens + Scoring":
+    st.title("🎭 Emotional Lens + Emotion Scoring")
+    if "df" in st.session_state:
+        df = st.session_state.df.copy()
+
+        emotion_map = {
+            "Fear": ["urgent", "risk", "alert", "warning"],
+            "Curiosity": ["what", "why", "how", "did you know", "?"],
+            "Aspirational": ["grow", "future", "dream", "success"],
+            "Authority": ["expert", "top", "proven", "official"]
+        }
+
+        def detect_emotion(text):
+            t = str(text).lower()
+            for emotion, keywords in emotion_map.items():
+                if any(k in t for k in keywords):
+                    return emotion
+            return "Neutral"
+
+        df["emotion_detected"] = df["creative_text"].apply(detect_emotion)
+        df["suggested_rewrite"] = df["creative_text"].apply(lambda x: f"🔥 {x.strip()}")
+        st.session_state.df = df
+        st.success("✅ Emotional tone & rewrites applied")
+        st.dataframe(df)
+    else:
+        st.warning("Upload creative content first.")
+
+elif current_step == "Clustering":
+    import matplotlib.pyplot as plt
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.decomposition import PCA
+
+    st.title("📈 Creative Clustering")
+
+    if "df" in st.session_state and "creative_text" in st.session_state.df.columns:
+        df = st.session_state.df.copy()
+        vectorizer = TfidfVectorizer(max_features=50)
+        X = vectorizer.fit_transform(df["creative_text"].astype(str))
+        reduced = PCA(n_components=2).fit_transform(X.toarray())
+        df["x"] = reduced[:, 0]
+        df["y"] = reduced[:, 1]
+        st.session_state.df = df
+
+        st.success("🧠 Text clustered using PCA")
+
+        fig, ax = plt.subplots()
+        ax.scatter(df["x"], df["y"])
+        for i, txt in enumerate(df["creative_text"].head(50)):
+            ax.annotate(txt[:20], (df["x"].iloc[i], df["y"].iloc[i]), fontsize=6)
+        st.pyplot(fig)
+    else:
+        st.warning("No creative data found.")
+
+elif current_step == "GPT Rewrite":
+    import openai
+
+    st.title("✍️ GPT-Powered Rewrite & Justification")
+    openai.api_key = st.secrets["openai"]["api_key"]
+
+    if "df" in st.session_state:
+        df = st.session_state.df.copy()
+        styles = {
+            "Urgent CTA": "Rewrite this ad to sound more urgent and include a clear call to action.",
+            "Conversational & Friendly": "Rewrite this ad in a conversational tone that feels warm and friendly.",
+            "Authoritative & Expert": "Rewrite this ad to sound authoritative and professional, as if written by a subject matter expert.",
+            "Curiosity Driven": "Rewrite this ad to make the user curious and want to learn more.",
+            "Problem → Solution": "Rewrite this ad starting with the user's problem and ending with a solution."
+        }
+
+        style_choice = st.selectbox("🎨 Choose rewrite style", list(styles.keys()))
+        prompt_template = styles[style_choice]
+
+        if st.button("🔁 Rewrite with GPT"):
+            rewritten, reasons = [], []
+            for text in df["creative_text"]:
+                try:
+                    messages = [
+                        {"role": "system", "content": "You are a copywriting assistant that rewrites ad texts using different tones and styles."},
+                        {"role": "user", "content": f"{prompt_template}
+
+Original: {text}
+
+Also explain in 1 sentence why this rewrite might perform better."}
+                    ]
+                    response = openai.ChatCompletion.create(
+                        model="gpt-4",
+                        messages=messages,
+                        temperature=0.7
+                    )
+                    output = response.choices[0].message["content"]
+                    if "
+
+" in output:
+                        split = output.split("
+
+", 1)
+                        rewritten.append(split[0].strip())
+                        reasons.append(split[1].strip())
+                    else:
+                        rewritten.append(output.strip())
+                        reasons.append("—")
+                except Exception as e:
+                    rewritten.append("ERROR")
+                    reasons.append(str(e))
+
+            df[f"rewrite_{style_choice}"] = rewritten
+            df[f"reason_{style_choice}"] = reasons
+            st.session_state.df = df
+            st.success("✅ Rewrites completed")
+            st.dataframe(df)
+    else:
+        st.warning("Upload creative content first.")
+
+elif current_step == "Clustering":
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.decomposition import PCA
+    from mpl_toolkits.mplot3d import Axes3D
+    import matplotlib.pyplot as plt
+
+    st.title("📈 3D Clustering of Creative Text")
+
+    if "df" in st.session_state and "creative_text" in st.session_state.df.columns:
+        df = st.session_state.df.copy()
+        vectorizer = TfidfVectorizer(max_features=50)
+        X = vectorizer.fit_transform(df["creative_text"].astype(str))
+        reduced = PCA(n_components=3).fit_transform(X.toarray())
+        df["x"], df["y"], df["z"] = reduced[:, 0], reduced[:, 1], reduced[:, 2]
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        ax.scatter(df["x"], df["y"], df["z"], s=20)
+        for i, txt in enumerate(df["creative_text"].head(25)):
+            ax.text(df["x"].iloc[i], df["y"].iloc[i], df["z"].iloc[i], txt[:15], fontsize=7)
+        st.pyplot(fig)
+        st.success("✅ 3D visualization complete")
+        st.session_state.df = df
+    else:
+        st.warning("Upload creative data to visualize.")
