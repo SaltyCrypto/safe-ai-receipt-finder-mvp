@@ -5,6 +5,21 @@ from google.ads.googleads.config import load_from_dict
 
 st.set_page_config(page_title="Creative Intelligence OS", layout="wide")
 
+# Inject custom sidebar font styles
+st.markdown("""
+    <style>
+    [data-testid="stSidebar"] .css-1d391kg {
+        font-size: 1.1rem;
+    }
+    [data-testid="stSidebar"] h1, 
+    [data-testid="stSidebar"] h2, 
+    [data-testid="stSidebar"] h3 {
+        font-size: 1.3rem !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+
 if "step_idx" not in st.session_state:
     st.session_state.step_idx = 0
 
@@ -108,7 +123,6 @@ elif current_step == "Export":
     if "df" in st.session_state:
         st.download_button("⬇️ Download Results", data=st.session_state.df.to_csv(index=False), file_name="creative_output.csv")
 elif current_step == "GPT Rewrite":
-elif current_step == "Clustering":
 
 col1, col2, col3 = st.columns([1, 2, 1])
 with col1:
