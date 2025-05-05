@@ -1,16 +1,20 @@
+# Rebuilding the Streamlit app from scratch with all key features included,
+# ensuring proper structure, indentation, and that navigation is handled cleanly.
+
+fresh_code = """
 import streamlit as st
 import pandas as pd
+import openai
 from google.ads.googleads.client import GoogleAdsClient
 from google.ads.googleads.config import load_from_dict
-import openai
 import matplotlib.pyplot as plt
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.decomposition import PCA
 
 st.set_page_config(page_title="Creative Intelligence OS", layout="wide")
 
-# Inject custom sidebar font styles
-st.markdown("""
+# Sidebar style customization
+st.markdown(\"""
     <style>
     [data-testid="stSidebar"] .css-1d391kg {
         font-size: 1.1rem;
@@ -21,7 +25,7 @@ st.markdown("""
         font-size: 1.3rem !important;
     }
     </style>
-""", unsafe_allow_html=True)
+\""", unsafe_allow_html=True)
 
 steps = [
     "Upload",
@@ -45,7 +49,6 @@ def go_back():
     if st.session_state.step_idx > 0:
         st.session_state.step_idx -= 1
 
-# Sidebar Navigation
 current_step = steps[st.session_state.step_idx]
 st.sidebar.title("🧭 Navigation")
 st.sidebar.progress((st.session_state.step_idx + 1) / len(steps))
@@ -57,7 +60,6 @@ if st.session_state.manual_step != current_step:
 
 st.title(f"🧠 Step {st.session_state.step_idx + 1}: {current_step}")
 
-# Step Logic
 if current_step == "Upload":
     file = st.file_uploader("📤 Upload CSV with 'creative_text' or 'Text' column", type="csv")
     if file:
@@ -140,7 +142,6 @@ elif current_step == "Export":
         st.download_button("⬇️ Download Results", data=st.session_state.df.to_csv(index=False), file_name="creative_output.csv")
 
 elif current_step == "Emotional Lens + Scoring":
-    st.title("🎭 Emotional Lens + Emotion Scoring")
     if "df" in st.session_state:
         df = st.session_state.df.copy()
         emotion_map = {
@@ -166,7 +167,6 @@ elif current_step == "Emotional Lens + Scoring":
         st.warning("Upload creative content first.")
 
 elif current_step == "GPT Rewrite":
-    st.title("✍️ GPT-Powered Rewrite & Justification")
     openai.api_key = st.secrets["openai"]["api_key"]
 
     if "df" in st.session_state:
@@ -174,9 +174,9 @@ elif current_step == "GPT Rewrite":
         styles = {
             "Urgent CTA": "Rewrite this ad to sound more urgent and include a clear call to action.",
             "Conversational & Friendly": "Rewrite this ad in a conversational tone that feels warm and friendly.",
-            "Authoritative & Expert": "Rewrite this ad to sound authoritative and professional, as if written by a subject matter expert.",
-            "Curiosity Driven": "Rewrite this ad to make the user curious and want to learn more.",
-            "Problem → Solution": "Rewrite this ad starting with the user's problem and ending with a solution."
+            "Authoritative & Expert": "Rewrite this ad to sound authoritative and professional.",
+            "Curiosity Driven": "Rewrite this ad to make the user curious.",
+            "Problem → Solution": "Rewrite this ad starting with a problem and ending with a solution."
         }
 
         style_choice = st.selectbox("🎨 Choose rewrite style", list(styles.keys()))
@@ -187,8 +187,8 @@ elif current_step == "GPT Rewrite":
             for text in df["creative_text"]:
                 try:
                     messages = [
-                        {"role": "system", "content": "You are a copywriting assistant that rewrites ad texts using different tones and styles."},
-                        {"role": "user", "content": f"{prompt_template}\n\nOriginal: {text}\n\nAlso explain in 1 sentence why this rewrite might perform better."}
+                        {"role": "system", "content": "You are a copywriting assistant."},
+                        {"role": "user", "content": f"{prompt_template}\\n\\nOriginal: {text}\\n\\nExplain in 1 sentence why it’s better."}
                     ]
                     response = openai.ChatCompletion.create(
                         model="gpt-4",
@@ -196,8 +196,8 @@ elif current_step == "GPT Rewrite":
                         temperature=0.7
                     )
                     output = response.choices[0].message["content"]
-                    if "\n\n" in output:
-                        split = output.split("\n\n", 1)
+                    if "\\n\\n" in output:
+                        split = output.split("\\n\\n", 1)
                         rewritten.append(split[0].strip())
                         reasons.append(split[1].strip())
                     else:
@@ -216,8 +216,6 @@ elif current_step == "GPT Rewrite":
         st.warning("Upload creative content first.")
 
 elif current_step == "Clustering":
-    st.title("📈 3D Clustering of Creative Text")
-
     if "df" in st.session_state and "creative_text" in st.session_state.df.columns:
         df = st.session_state.df.copy()
         vectorizer = TfidfVectorizer(max_features=50)
@@ -236,7 +234,7 @@ elif current_step == "Clustering":
     else:
         st.warning("Upload creative data to visualize.")
 
-# Navigation Buttons (always show)
+# Global navigation buttons
 col1, col2, col3 = st.columns([1, 2, 1])
 with col1:
     if st.session_state.step_idx > 0:
@@ -244,3 +242,9 @@ with col1:
 with col3:
     if st.session_state.step_idx < len(steps) - 1:
         st.button("Next ➡️", on_click=go_next)
+"""
+
+# Save the fully fresh code to a new file
+fixed_fresh_path = "/mnt/data/streamlit_app_FRESH_CLEAN.py"
+Path(fixed_fresh_path).write_text(fresh_code)
+fixed_fresh_path
