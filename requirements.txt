@@ -5,3 +5,4 @@ openai==1.77.0
 scikit-learn==1.6.1
 matplotlib==3.8.4
 google-ads==22.0.0
+plotly==5.20.0

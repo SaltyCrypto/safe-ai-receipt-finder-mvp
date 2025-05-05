@@ -7,24 +7,22 @@ import plotly.express as px
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.decomposition import PCA
 
-# Page setup
+# Page config and style
 st.set_page_config(page_title="Creative Intelligence OS", layout="wide")
-
-# Inject sidebar styling
 st.markdown("""
-    <style>
-    [data-testid="stSidebar"] {
-        font-family: 'Segoe UI', sans-serif;
-        font-size: 1.25rem;
-        padding: 1rem;
-    }
-    [data-testid="stSidebar"] h1,
-    [data-testid="stSidebar"] h2,
-    [data-testid="stSidebar"] h3 {
-        font-weight: 700;
-        color: #3A3A3A;
-    }
-    </style>
+<style>
+[data-testid="stSidebar"] {
+    font-family: 'Segoe UI', sans-serif;
+    font-size: 1.25rem;
+    padding: 1rem;
+}
+[data-testid="stSidebar"] h1,
+[data-testid="stSidebar"] h2,
+[data-testid="stSidebar"] h3 {
+    font-weight: 700;
+    color: #3A3A3A;
+}
+</style>
 """, unsafe_allow_html=True)
 
 steps = [
@@ -59,6 +57,7 @@ if st.session_state.manual_step != current_step:
 
 st.title(f"🧠 Step {st.session_state.step_idx + 1}: {current_step}")
 
+# Now begin with proper structure
 if current_step == "Upload":
     file = st.file_uploader("📤 Upload CSV with 'creative_text' or 'Text' column", type="csv")
     if file:
