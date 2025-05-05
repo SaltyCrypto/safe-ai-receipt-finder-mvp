@@ -1,9 +1,7 @@
-streamlit>=1.28
-pandas>=2.0
-numpy>=1.24
-plotly>=5.0
-openai>=1.0
-scikit-learn
-sentence-transformers
-email-validator
+streamlit==1.45.0
+pandas==2.2.3
+numpy==2.2.5
+openai==1.77.0
+scikit-learn==1.6.1
+matplotlib==3.8.4
 google-ads==22.0.0
