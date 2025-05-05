@@ -1,7 +1,4 @@
-# Rebuilding the Streamlit app from scratch with all key features included,
-# ensuring proper structure, indentation, and that navigation is handled cleanly.
 
-fresh_code = """
 import streamlit as st
 import pandas as pd
 import openai
@@ -14,7 +11,7 @@ from sklearn.decomposition import PCA
 st.set_page_config(page_title="Creative Intelligence OS", layout="wide")
 
 # Sidebar style customization
-st.markdown(\"""
+st.markdown("""
     <style>
     [data-testid="stSidebar"] .css-1d391kg {
         font-size: 1.1rem;
@@ -25,7 +22,7 @@ st.markdown(\"""
         font-size: 1.3rem !important;
     }
     </style>
-\""", unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
 steps = [
     "Upload",
@@ -188,7 +185,7 @@ elif current_step == "GPT Rewrite":
                 try:
                     messages = [
                         {"role": "system", "content": "You are a copywriting assistant."},
-                        {"role": "user", "content": f"{prompt_template}\\n\\nOriginal: {text}\\n\\nExplain in 1 sentence why it’s better."}
+                        {"role": "user", "content": f"{prompt_template}\n\nOriginal: {text}\n\nExplain in 1 sentence why it’s better."}
                     ]
                     response = openai.ChatCompletion.create(
                         model="gpt-4",
@@ -196,8 +193,8 @@ elif current_step == "GPT Rewrite":
                         temperature=0.7
                     )
                     output = response.choices[0].message["content"]
-                    if "\\n\\n" in output:
-                        split = output.split("\\n\\n", 1)
+                    if "\n\n" in output:
+                        split = output.split("\n\n", 1)
                         rewritten.append(split[0].strip())
                         reasons.append(split[1].strip())
                     else:
@@ -234,7 +231,7 @@ elif current_step == "Clustering":
     else:
         st.warning("Upload creative data to visualize.")
 
-# Global navigation buttons
+# Navigation buttons
 col1, col2, col3 = st.columns([1, 2, 1])
 with col1:
     if st.session_state.step_idx > 0:
@@ -242,9 +239,3 @@ with col1:
 with col3:
     if st.session_state.step_idx < len(steps) - 1:
         st.button("Next ➡️", on_click=go_next)
-"""
-
-# Save the fully fresh code to a new file
-fixed_fresh_path = "/mnt/data/streamlit_app_FRESH_CLEAN.py"
-Path(fixed_fresh_path).write_text(fresh_code)
-fixed_fresh_path
