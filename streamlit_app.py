@@ -2,6 +2,10 @@ import streamlit as st
 import pandas as pd
 from google.ads.googleads.client import GoogleAdsClient
 from google.ads.googleads.config import load_from_dict
+import openai
+import matplotlib.pyplot as plt
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.decomposition import PCA
 
 st.set_page_config(page_title="Creative Intelligence OS", layout="wide")
 
@@ -19,6 +23,16 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+steps = [
+    "Upload",
+    "Scoring",
+    "Keyword Planner",
+    "Explorer",
+    "Export",
+    "Emotional Lens + Scoring",
+    "GPT Rewrite",
+    "Clustering"
+]
 
 if "step_idx" not in st.session_state:
     st.session_state.step_idx = 0
@@ -31,6 +45,7 @@ def go_back():
     if st.session_state.step_idx > 0:
         st.session_state.step_idx -= 1
 
+# Sidebar Navigation
 current_step = steps[st.session_state.step_idx]
 st.sidebar.title("🧭 Navigation")
 st.sidebar.progress((st.session_state.step_idx + 1) / len(steps))
@@ -42,6 +57,7 @@ if st.session_state.manual_step != current_step:
 
 st.title(f"🧠 Step {st.session_state.step_idx + 1}: {current_step}")
 
+# Step Logic
 if current_step == "Upload":
     file = st.file_uploader("📤 Upload CSV with 'creative_text' or 'Text' column", type="csv")
     if file:
@@ -71,7 +87,7 @@ elif current_step == "Keyword Planner":
         "client_id": st.secrets["google_ads"]["client_id"],
         "client_secret": st.secrets["google_ads"]["client_secret"],
         "refresh_token": st.secrets["google_ads"]["refresh_token"],
-        "login_customer_id": "9816127168",  # Manager account ID
+        "login_customer_id": "9816127168",
         "use_proto_plus": True
     }
 
@@ -81,7 +97,7 @@ elif current_step == "Keyword Planner":
         st.error(f"Google Ads error: {e}")
         st.stop()
 
-    customer_id = "2933192176"  # Newly created account
+    customer_id = "2933192176"
 
     keyword = st.text_input("💡 Seed keyword", "life insurance")
     geo = st.selectbox("🌍 Geo", {
@@ -115,28 +131,18 @@ elif current_step == "Keyword Planner":
         except Exception as e:
             st.error(f"Keyword error: {e}")
 
-# Placeholder for remaining steps
 elif current_step == "Explorer":
     if "df" in st.session_state:
         st.dataframe(st.session_state.df)
+
 elif current_step == "Export":
     if "df" in st.session_state:
         st.download_button("⬇️ Download Results", data=st.session_state.df.to_csv(index=False), file_name="creative_output.csv")
-elif current_step == "GPT Rewrite":
-
-col1, col2, col3 = st.columns([1, 2, 1])
-with col1:
-    if st.session_state.step_idx > 0:
-        st.button("⬅️ Back", on_click=go_back)
-with col3:
-    if st.session_state.step_idx < len(steps) - 1:
-        st.button("Next ➡️", on_click=go_next)
 
 elif current_step == "Emotional Lens + Scoring":
     st.title("🎭 Emotional Lens + Emotion Scoring")
     if "df" in st.session_state:
         df = st.session_state.df.copy()
-
         emotion_map = {
             "Fear": ["urgent", "risk", "alert", "warning"],
             "Curiosity": ["what", "why", "how", "did you know", "?"],
@@ -159,35 +165,7 @@ elif current_step == "Emotional Lens + Scoring":
     else:
         st.warning("Upload creative content first.")
 
-elif current_step == "Clustering":
-    import matplotlib.pyplot as plt
-    from sklearn.feature_extraction.text import TfidfVectorizer
-    from sklearn.decomposition import PCA
-
-    st.title("📈 Creative Clustering")
-
-    if "df" in st.session_state and "creative_text" in st.session_state.df.columns:
-        df = st.session_state.df.copy()
-        vectorizer = TfidfVectorizer(max_features=50)
-        X = vectorizer.fit_transform(df["creative_text"].astype(str))
-        reduced = PCA(n_components=2).fit_transform(X.toarray())
-        df["x"] = reduced[:, 0]
-        df["y"] = reduced[:, 1]
-        st.session_state.df = df
-
-        st.success("🧠 Text clustered using PCA")
-
-        fig, ax = plt.subplots()
-        ax.scatter(df["x"], df["y"])
-        for i, txt in enumerate(df["creative_text"].head(50)):
-            ax.annotate(txt[:20], (df["x"].iloc[i], df["y"].iloc[i]), fontsize=6)
-        st.pyplot(fig)
-    else:
-        st.warning("No creative data found.")
-
 elif current_step == "GPT Rewrite":
-    import openai
-
     st.title("✍️ GPT-Powered Rewrite & Justification")
     openai.api_key = st.secrets["openai"]["api_key"]
 
@@ -210,11 +188,7 @@ elif current_step == "GPT Rewrite":
                 try:
                     messages = [
                         {"role": "system", "content": "You are a copywriting assistant that rewrites ad texts using different tones and styles."},
-                        {"role": "user", "content": f"{prompt_template}
-
-Original: {text}
-
-Also explain in 1 sentence why this rewrite might perform better."}
+                        {"role": "user", "content": f"{prompt_template}\n\nOriginal: {text}\n\nAlso explain in 1 sentence why this rewrite might perform better."}
                     ]
                     response = openai.ChatCompletion.create(
                         model="gpt-4",
@@ -222,12 +196,8 @@ Also explain in 1 sentence why this rewrite might perform better."}
                         temperature=0.7
                     )
                     output = response.choices[0].message["content"]
-                    if "
-
-" in output:
-                        split = output.split("
-
-", 1)
+                    if "\n\n" in output:
+                        split = output.split("\n\n", 1)
                         rewritten.append(split[0].strip())
                         reasons.append(split[1].strip())
                     else:
@@ -246,11 +216,6 @@ Also explain in 1 sentence why this rewrite might perform better."}
         st.warning("Upload creative content first.")
 
 elif current_step == "Clustering":
-    from sklearn.feature_extraction.text import TfidfVectorizer
-    from sklearn.decomposition import PCA
-    from mpl_toolkits.mplot3d import Axes3D
-    import matplotlib.pyplot as plt
-
     st.title("📈 3D Clustering of Creative Text")
 
     if "df" in st.session_state and "creative_text" in st.session_state.df.columns:
@@ -270,3 +235,12 @@ elif current_step == "Clustering":
         st.session_state.df = df
     else:
         st.warning("Upload creative data to visualize.")
+
+# Navigation Buttons (always show)
+col1, col2, col3 = st.columns([1, 2, 1])
+with col1:
+    if st.session_state.step_idx > 0:
+        st.button("⬅️ Back", on_click=go_back)
+with col3:
+    if st.session_state.step_idx < len(steps) - 1:
+        st.button("Next ➡️", on_click=go_next)
