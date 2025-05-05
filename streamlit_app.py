@@ -133,7 +133,7 @@ elif current_step == "Keyword Planner":
             if not keywords:
                 st.warning("⚠️ Please enter at least one keyword phrase.")
                 st.stop()
-            keyword_seed = client.get_type("KeywordSeed")()
+            keyword_seed = client.get_type("KeywordSeed")
             keyword_seed.keywords.extend(keywords)
             request.keyword_seed = keyword_seed
             response = keyword_plan_idea_service.generate_keyword_ideas(request=request)
