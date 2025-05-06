@@ -213,11 +213,7 @@ elif current == "Review + Annotate":
             if col not in df.columns:
                 df[col] = default
 
-        edited = st.data_editor(
-            df,
-            use_container_width=True,
-            key="review_editor",
-        )
+        edited = st.data_editor(df, use_container_width=True, key="review_editor")
         st.session_state.creatives_df = edited
         st.success("✅ Review changes saved.")
 
@@ -290,10 +286,6 @@ elif current == "Export":
 # ————————— Navigation Buttons —————————
 col1, col2, col3 = st.columns([1, 2, 1])
 with col1:
-    if st.button("← Back"):
-        prev_step()
-        st.experimental_rerun()
+    st.button("← Back", on_click=prev_step)
 with col3:
-    if st.button("Next →"):
-        next_step()
-        st.experimental_rerun()
+    st.button("Next →", on_click=next_step)
