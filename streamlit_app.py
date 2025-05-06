@@ -14,13 +14,12 @@ st.set_page_config(page_title="Creative Intelligence OS", layout="wide")
 @st.cache_resource
 def get_ads_client():
     cfg = {
-        "developer_token":    st.secrets.google_ads.developer_token,
-        "use_proto_plus":     True,   # required by the latest google-ads client
-        "client_id":          st.secrets.google_ads.client_id,
-        "client_secret":      st.secrets.google_ads.client_secret,
-        "refresh_token":      st.secrets.google_ads.refresh_token,
-        # only if using a manager (MCC) account:
-        "login_customer_id":  st.secrets.google_ads.get("login_customer_id", None),
+        "developer_token":   st.secrets.google_ads.developer_token,
+        "use_proto_plus":    True,   # required by google-ads client v14+
+        "client_id":         st.secrets.google_ads.client_id,
+        "client_secret":     st.secrets.google_ads.client_secret,
+        "refresh_token":     st.secrets.google_ads.refresh_token,
+        "login_customer_id": st.secrets.google_ads.get("login_customer_id", None),
     }
     return GoogleAdsClient.load_from_dict(cfg)
 
@@ -89,8 +88,7 @@ if st.sidebar.button("Test OpenAI Connection"):
     try:
         client = OpenAI(api_key=st.secrets.openai.api_key)
         models = client.models.list()
-        count = len(models.data)
-        st.sidebar.success(f"OpenAI OK: {count} models available.")
+        st.sidebar.success(f"OpenAI OK: {len(models.data)} models available.")
     except Exception:
         st.sidebar.error("OpenAI Connection failed:")
         st.sidebar.code(traceback.format_exc(), language="python")
@@ -204,7 +202,7 @@ elif current == "Keyword Planner":
 elif current == "Review + Annotate":
     df = st.session_state.df
     if df.empty:
-        st.warning("No data to review. Run an earlier step first.")
+        st.warning("No data to review.")
     else:
         st.markdown("Review and edit your data below:")
         edited = st.data_editor(df, num_rows="dynamic", use_container_width=True)
@@ -215,7 +213,7 @@ elif current == "GPT Rewrite":
     try:
         df = st.session_state.df.copy()
         if df.empty or "creative_text" not in df.columns:
-            st.warning("No creatives to rewrite. Run Upload or Planner first.")
+            st.warning("No creatives to rewrite.")
         else:
             client = OpenAI(api_key=st.secrets.openai.api_key)
             styles = {
@@ -223,7 +221,7 @@ elif current == "GPT Rewrite":
                 "Snappy":      "Short, punchy, attention-grabbing.",
                 "Empathetic":  "Emotionally supportive, human tone.",
                 "Rude":        "Blunt, no-nonsense voice.",
-                "Inquisitive": "In the form of a curiosity-driven question.",
+                "Inquisitive": "Frame as curiosity-driven question.",
             }
             choice = st.selectbox("Rewrite Style", list(styles.keys()))
             if st.button("Rewrite with GPT"):
@@ -262,11 +260,11 @@ elif current == "Clustering":
     try:
         df = st.session_state.df
         if df.empty or "creative_text" not in df.columns:
-            st.warning("No data to cluster. Run previous steps first.")
+            st.warning("No data to cluster.")
         else:
             X = TfidfVectorizer(max_features=50).fit_transform(df["creative_text"].astype(str))
             coords = PCA(n_components=3).fit_transform(X.toarray())
-            df[["x","y","z"]] = coords
+            df[["x", "y", "z"]] = coords
             fig = px.scatter_3d(
                 df.head(50), x="x", y="y", z="z",
                 text="creative_text", title="3D Creative Clustering"
