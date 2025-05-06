@@ -66,14 +66,16 @@ def detect_emotion(text: str) -> str:
 # ————————————— Connection Tests in Sidebar —————————————
 st.sidebar.markdown("## 🔌 Connection Tests")
 
-# Google Ads Test using CustomerService
+# Google Ads Test
 if st.sidebar.button("Test Google Ads Connection"):
     try:
         client = get_ads_client()
         cust_svc = client.get_service("CustomerService")
-        resp = cust_svc.list_accessible_customers()
-        ids = [r.split("/")[-1] for r in resp.resource_names]
-        st.sidebar.success(f"Google Ads OK: Accessible customers {', '.join(ids)}")
+        resource_name = f"customers/{st.secrets.google_ads.customer_id}"
+        customer = cust_svc.get_customer(resource_name=resource_name)
+        st.sidebar.success(
+            f"Google Ads OK: Customer {customer.id} — {customer.descriptive_name}"
+        )
     except Exception:
         st.sidebar.error("Google Ads Connection failed:")
         st.sidebar.code(traceback.format_exc(), language="python")
@@ -241,8 +243,10 @@ elif current == "Clustering":
         X = TfidfVectorizer(max_features=50).fit_transform(df["creative_text"].astype(str))
         coords = PCA(n_components=3).fit_transform(X.toarray())
         df[["x","y","z"]] = coords
-        fig = px.scatter_3d(df.head(50), x="x", y="y", z="z",
-                            text="creative_text", title="3D Creative Clustering")
+        fig = px.scatter_3d(
+            df.head(50), x="x", y="y", z="z",
+            text="creative_text", title="3D Creative Clustering"
+        )
         st.plotly_chart(fig, use_container_width=True)
 
 # ————————————— Step: Export —————————————
