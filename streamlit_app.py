@@ -94,6 +94,8 @@ if "creatives_df" not in st.session_state:
     st.session_state.creatives_df = pd.DataFrame()
 if "kws_df" not in st.session_state:
     st.session_state.kws_df = pd.DataFrame()
+if "kp_submitted" not in st.session_state:
+    st.session_state.kp_submitted = False
 
 def next_step():
     st.session_state.step = min(st.session_state.step + 1, len(STEPS) - 1)
@@ -175,6 +177,7 @@ elif current == "Keyword Planner":
                         geos=[geo],
                     )
                 st.session_state.kws_df = df_kws
+                st.session_state.kp_submitted = True
                 st.success(f"✅ Retrieved {len(df_kws)} keywords.")
                 st.dataframe(df_kws, use_container_width=True)
             except Exception:
@@ -240,23 +243,18 @@ elif current == "Clustering":
         X = TfidfVectorizer(max_features=50).fit_transform(df["creative_text"].astype(str))
         coords = PCA(n_components=3).fit_transform(X.toarray())
         df[["x", "y", "z"]] = coords
-        fig = px.scatter_3d(df.head(50), x="x", y="y", z="z",
-                            text="creative_text", title="3D Creative Clustering")
+        fig = px.scatter_3d(df.head(50), x="x", y="y", z="z", text="creative_text", title="3D Creative Clustering")
         st.plotly_chart(fig, use_container_width=True)
 
 # ————————— Step: Export —————————
 elif current == "Export":
     choice = st.selectbox("Export data", ["Creatives", "Keywords"])
-    df_out = (
-        st.session_state.creatives_df
-        if choice == "Creatives"
-        else st.session_state.kws_df
-    )
+    df_out = st.session_state.creatives_df if choice == "Creatives" else st.session_state.kws_df
     if df_out.empty:
         st.warning(f"No {choice.lower()} to export.")
     else:
         csv = df_out.to_csv(index=False)
-        st.download_button(f"⬇️ Download {choice}", data=csv, file_name=f"{choice}.csv")
+        st.download_button(f"Download {choice}", data=csv, file_name=f"{choice}.csv")
 
 # ————————— Navigation —————————
 col1, _, col3 = st.columns([1, 2, 1])
@@ -264,5 +262,8 @@ with col1:
     if st.button("← Back"):
         prev_step()
 with col3:
-    if st.button("Next →"):
-        next_step()
+    if current == "Keyword Planner" and not st.session_state.kp_submitted:
+        st.button("Next →", disabled=True)
+    else:
+        if st.button("Next →"):
+            next_step()
