@@ -10,7 +10,7 @@ from sklearn.decomposition import PCA
 # ————————————— Page config —————————————
 st.set_page_config(page_title="Creative Intelligence OS", layout="wide")
 
-# ————————————— Helpers & Clients —————————————
+# ————————————— Helpers & Cached Clients —————————————
 @st.cache_resource
 def get_ads_client():
     cfg = {
@@ -18,6 +18,7 @@ def get_ads_client():
         "client_id":         st.secrets.google_ads.client_id,
         "client_secret":     st.secrets.google_ads.client_secret,
         "refresh_token":     st.secrets.google_ads.refresh_token,
+        # only if using a manager account
         "login_customer_id": st.secrets.google_ads.get("login_customer_id", None),
     }
     return GoogleAdsClient.load_from_dict(cfg)
@@ -26,34 +27,74 @@ def get_ads_client():
 def fetch_keyword_ideas(customer_id, seeds, lang, geos):
     client = get_ads_client()
     svc = client.get_service("KeywordPlanIdeaService")
-    req = client.get_type("GenerateKeywordIdeasRequest")(
-        customer_id=customer_id,
-        language=lang,
-        geo_target_constants=geos,
-        keyword_seed=client.get_type("KeywordSeed")(keywords=seeds),
-    )
+    req = client.get_type("GenerateKeywordIdeasRequest")()
+    req.customer_id = customer_id
+    req.language = lang
+    req.geo_target_constants.extend(geos)
+    seed = client.get_type("KeywordSeed")()
+    seed.keywords.extend(seeds)
+    req.keyword_seed = seed
+
     resp = svc.generate_keyword_ideas(request=req)
-    rows = [{
-        "Keyword": idea.text,
-        "Searches/mo": idea.keyword_idea_metrics.avg_monthly_searches,
-        "Competition": idea.keyword_idea_metrics.competition.name,
-        "Low CPC ($)": round(idea.keyword_idea_metrics.low_top_of_page_bid_micros/1e6,2),
-        "High CPC ($)": round(idea.keyword_idea_metrics.high_top_of_page_bid_micros/1e6,2),
-    } for idea in resp]
+    rows = []
+    for idea in resp:
+        m = idea.keyword_idea_metrics
+        rows.append({
+            "Keyword":       idea.text,
+            "Searches/mo":   m.avg_monthly_searches,
+            "Competition":   m.competition.name,
+            "Low CPC ($)":   round(m.low_top_of_page_bid_micros  / 1e6, 2),
+            "High CPC ($)":  round(m.high_top_of_page_bid_micros / 1e6, 2),
+        })
     return pd.DataFrame(rows)
 
-def detect_emotion(txt: str) -> str:
-    m = {
-        "Fear": ["urgent","risk","alert","warning"],
-        "Curiosity": ["what","why","how","?"],
-        "Aspirational": ["grow","future","dream","success"],
-        "Authority": ["expert","top","proven","official"],
+def detect_emotion(text: str) -> str:
+    emotion_map = {
+        "Fear":        ["urgent", "risk", "alert", "warning"],
+        "Curiosity":   ["what", "why", "how", "?"],
+        "Aspirational":["grow", "future", "dream", "success"],
+        "Authority":   ["expert", "top", "proven", "official"],
     }
-    t = txt.lower()
-    for emo, kws in m.items():
+    t = str(text).lower()
+    for emo, kws in emotion_map.items():
         if any(k in t for k in kws):
             return emo
     return "Neutral"
+
+# ————————————— Connection Tests in Sidebar —————————————
+st.sidebar.markdown("## 🔌 Connection Tests")
+
+# Google Ads Test
+if st.sidebar.button("Test Google Ads Connection"):
+    try:
+        client = get_ads_client()
+        ga_service = client.get_service("GoogleAdsService")
+        query = "SELECT customer.id FROM customer LIMIT 1"
+        resp = ga_service.search(
+            customer_id = st.secrets.google_ads.customer_id,
+            query       = query
+        )
+        first = next(iter(resp), None)
+        if first:
+            st.sidebar.success(f"Google Ads OK: Customer ID {first.customer.id}")
+        else:
+            st.sidebar.error("Google Ads: Connected but no rows returned.")
+    except Exception:
+        st.sidebar.error("Google Ads Connection failed:")
+        st.sidebar.code(traceback.format_exc(), language="python")
+
+# OpenAI Test
+if st.sidebar.button("Test OpenAI Connection"):
+    try:
+        key = st.secrets.openai.api_key
+        client = OpenAI(api_key=key)
+        # a lightweight, free-ish endpoint
+        models = client.models.list()
+        count = len(models.data)
+        st.sidebar.success(f"OpenAI OK: {count} models available.")
+    except Exception:
+        st.sidebar.error("OpenAI Connection failed:")
+        st.sidebar.code(traceback.format_exc(), language="python")
 
 # ————————————— Steps & State —————————————
 STEPS = [
@@ -72,81 +113,101 @@ if "df" not in st.session_state:
     st.session_state.df = pd.DataFrame()
 
 def next_step():
-    st.session_state.step = min(st.session_state.step + 1, len(STEPS)-1)
+    st.session_state.step = min(st.session_state.step + 1, len(STEPS) - 1)
+
 def prev_step():
     st.session_state.step = max(st.session_state.step - 1, 0)
 
 current = STEPS[st.session_state.step]
 
 # ————————————— Navigation UI —————————————
-st.sidebar.title("Steps")
+st.sidebar.title("Workflow")
 for i, name in enumerate(STEPS):
     prefix = "▶️" if i == st.session_state.step else "  "
     st.sidebar.write(f"{prefix} {name}")
-st.title(f"🧠 Step {st.session_state.step+1}: {current}")
+
+st.title(f"🧠 Step {st.session_state.step + 1}: {current}")
 
 # ————————————— Step: Upload —————————————
 if current == "Upload":
     try:
-        f = st.file_uploader("Upload CSV with 'creative_text', 'Creative text' or 'Text' column", type="csv")
-        if f:
-            df = pd.read_csv(f)
-            found = None
-            for col in ["creative_text","Creative text","Text"]:
-                if col in df:
-                    df = df.rename(columns={col:"creative_text"})
-                    found = col
+        uploaded = st.file_uploader(
+            "Upload CSV with a 'creative_text', 'Creative text', or 'Text' column",
+            type="csv"
+        )
+        if uploaded:
+            df = pd.read_csv(uploaded)
+            found_col = None
+            for col in ["creative_text", "Creative text", "Text"]:
+                if col in df.columns:
+                    df = df.rename(columns={col: "creative_text"})
+                    found_col = col
                     break
-            if not found:
+            if not found_col:
                 st.error("CSV must include one of: creative_text, Creative text, Text.")
             else:
                 st.session_state.df = df
-                st.success(f"Loaded {len(df)} rows from '{found}'.")
+                st.success(f"✅ Loaded {len(df)} rows from '{found_col}'.")
     except Exception:
         st.error("Upload failed:")
-        st.code(traceback.format_exc())
+        st.code(traceback.format_exc(), language="python")
 
 # ————————————— Step: Scoring —————————————
 elif current == "Scoring":
     try:
         df = st.session_state.df.copy()
         if df.empty:
-            st.warning("Please complete Upload first.")
+            st.warning("Please complete the Upload step first.")
         else:
             df["score"] = df["creative_text"].str.len().mod(10).add(1)
             df["emotion_detected"] = df["creative_text"].apply(detect_emotion)
             st.session_state.df = df
-            st.dataframe(df)
+            st.dataframe(df, use_container_width=True)
     except Exception:
         st.error("Scoring failed:")
-        st.code(traceback.format_exc())
+        st.sidebar.code(traceback.format_exc(), language="python")
 
 # ————————————— Step: Keyword Planner —————————————
 elif current == "Keyword Planner":
     try:
         st.markdown("Enter one seed keyword per line:")
-        seeds = [w.strip() for w in st.text_area("", height=120).splitlines() if w.strip()]
-        geo = st.selectbox("Geo",{"US":"geoTargetConstants/2840","UK":"geoTargetConstants/2826","CA":"geoTargetConstants/2124"}.items(), format_func=lambda x:x[0])[1]
-        lang= st.selectbox("Language",{"English":"1000","Spanish":"1003"}.items(), format_func=lambda x:x[0])[1]
+        seed_input = st.text_area("", height=120)
+        seeds = [s.strip() for s in seed_input.splitlines() if s.strip()]
+        geo = st.selectbox("Geo", {
+            "United States": "geoTargetConstants/2840",
+            "UK":             "geoTargetConstants/2826",
+            "Canada":         "geoTargetConstants/2124",
+        }.items(), format_func=lambda x: x[0])[1]
+        lang = st.selectbox("Language", {
+            "English": "1000",
+            "Spanish": "1003",
+        }.items(), format_func=lambda x: x[0])[1]
+
         if st.button("Fetch Keyword Ideas"):
             if not seeds:
-                st.warning("Add at least one seed keyword.")
+                st.warning("Please enter at least one seed keyword.")
             else:
-                with st.spinner("Fetching…"):
-                    kws = fetch_keyword_ideas(st.secrets.google_ads.customer_id, seeds, lang, [geo])
-                st.session_state.df = kws
-                st.success(f"Retrieved {len(kws)} ideas.")
-                st.dataframe(kws)
+                with st.spinner("Fetching keyword ideas…"):
+                    df_kws = fetch_keyword_ideas(
+                        customer_id = st.secrets.google_ads.customer_id,
+                        seeds       = seeds,
+                        lang        = lang,
+                        geos        = [geo],
+                    )
+                st.session_state.df = df_kws
+                st.success(f"✅ Retrieved {len(df_kws)} keywords.")
+                st.dataframe(df_kws, use_container_width=True)
     except Exception:
         st.error("Keyword Planner error:")
-        st.code(traceback.format_exc())
+        st.code(traceback.format_exc(), language="python")
 
 # ————————————— Step: Review + Annotate —————————————
 elif current == "Review + Annotate":
     df = st.session_state.df
     if df.empty:
-        st.warning("No data to review.")
+        st.warning("No data to review. Run an earlier step first.")
     else:
+        st.markdown("Review and edit your data below:")
         edited = st.data_editor(df, num_rows="dynamic", use_container_width=True)
         st.session_state.df = edited
 
@@ -154,62 +215,67 @@ elif current == "Review + Annotate":
 elif current == "GPT Rewrite":
     try:
         df = st.session_state.df.copy()
-        if df.empty or "creative_text" not in df:
-            st.warning("Run Upload/Planner first.")
+        if df.empty or "creative_text" not in df.columns:
+            st.warning("No creatives to rewrite. Run Upload or Planner first.")
         else:
             client = OpenAI(api_key=st.secrets.openai.api_key)
             styles = {
-                "Bold":"Make this copy sound polished and bold.",
-                "Snappy":"Short, punchy, attention-grabbing.",
-                "Empathetic":"Emotionally supportive, human tone.",
-                "Rude":"Blunt, no-nonsense voice.",
-                "Inquisitive":"In the form of a curiosity-driven question.",
+                "Bold":        "Make this copy sound polished and bold.",
+                "Snappy":      "Short, punchy, attention-grabbing.",
+                "Empathetic":  "Emotionally supportive, human tone.",
+                "Rude":        "Blunt, no-nonsense voice.",
+                "Inquisitive": "In the form of a curiosity-driven question.",
             }
-            style = st.selectbox("Style", list(styles))
+            choice = st.selectbox("Rewrite Style", list(styles.keys()))
             if st.button("Rewrite with GPT"):
-                out_rewrites, out_reasons = [], []
+                rewritten, reasons = [], []
                 prog = st.progress(0)
-                for i, txt in enumerate(df["creative_text"],1):
+                total = len(df)
+                for i, text in enumerate(df["creative_text"], 1):
                     try:
                         resp = client.chat.completions.create(
                             model="gpt-4",
                             messages=[
-                                {"role":"system","content":"You are a creative ad writer."},
-                                {"role":"user","content":f"{styles[style]}\n\nOriginal: {txt}\n\nWhy better?"}
+                                {"role": "system", "content": "You are a creative ad writer."},
+                                {"role": "user",   "content": f"{styles[choice]}\n\nOriginal: {text}\n\nWhy better?"}
                             ],
                             temperature=0.8,
                         )
-                        c = resp.choices[0].message["content"]
-                        parts = c.split("\n\n",1)
-                        out_rewrites.append(parts[0].strip())
-                        out_reasons.append(parts[1].strip() if len(parts)>1 else "—")
+                        out = resp.choices[0].message["content"]
+                        parts = out.split("\n\n", 1)
+                        rewritten.append(parts[0].strip())
+                        reasons.append(parts[1].strip() if len(parts) > 1 else "—")
                     except Exception as e:
-                        out_rewrites.append("ERROR")
-                        out_reasons.append(str(e))
-                    prog.progress(i/len(df))
-                df[f"rewrite_{style}"] = out_rewrites
-                df[f"reason_{style}"] = out_reasons
+                        rewritten.append("ERROR")
+                        reasons.append(str(e))
+                    prog.progress(i / total)
+
+                df[f"rewrite_{choice}"] = rewritten
+                df[f"reason_{choice}"] = reasons
                 st.session_state.df = df
-                st.dataframe(df)
+                st.dataframe(df, use_container_width=True)
     except Exception:
         st.error("GPT Rewrite failed:")
-        st.code(traceback.format_exc())
+        st.code(traceback.format_exc(), language="python")
 
 # ————————————— Step: Clustering —————————————
 elif current == "Clustering":
     try:
         df = st.session_state.df
-        if df.empty or "creative_text" not in df:
-            st.warning("No creatives available.")
+        if df.empty or "creative_text" not in df.columns:
+            st.warning("No data to cluster. Run previous steps first.")
         else:
-            X = TfidfVectorizer(max_features=50).fit_transform(df["creative_text"])
-            xyz = PCA(3).fit_transform(X.toarray())
-            df[["x","y","z"]] = xyz
-            fig = px.scatter_3d(df.head(50), x="x", y="y", z="z", text="creative_text")
+            X = TfidfVectorizer(max_features=50).fit_transform(df["creative_text"].astype(str))
+            coords = PCA(n_components=3).fit_transform(X.toarray())
+            df[["x","y","z"]] = coords
+            fig = px.scatter_3d(
+                df.head(50), x="x", y="y", z="z",
+                text="creative_text", title="3D Creative Clustering"
+            )
             st.plotly_chart(fig, use_container_width=True)
     except Exception:
         st.error("Clustering failed:")
-        st.code(traceback.format_exc())
+        st.code(traceback.format_exc(), language="python")
 
 # ————————————— Step: Export —————————————
 elif current == "Export":
@@ -217,10 +283,11 @@ elif current == "Export":
     if df.empty:
         st.warning("Nothing to export.")
     else:
-        st.download_button("Download CSV", data=df.to_csv(index=False), file_name="output.csv")
+        csv = df.to_csv(index=False)
+        st.download_button("⬇️ Download CSV", data=csv, file_name="creative_output.csv")
 
-# ————————————— Navigation —————————————
-col1, _, col3 = st.columns([1,2,1])
+# ————————————— Navigation Buttons —————————————
+col1, _, col3 = st.columns([1, 2, 1])
 with col1:
     if st.button("← Back"):
         prev_step()
