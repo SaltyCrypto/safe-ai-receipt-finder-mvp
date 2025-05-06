@@ -14,12 +14,13 @@ st.set_page_config(page_title="Creative Intelligence OS", layout="wide")
 @st.cache_resource
 def get_ads_client():
     cfg = {
-        "developer_token":   st.secrets.google_ads.developer_token,
-        "client_id":         st.secrets.google_ads.client_id,
-        "client_secret":     st.secrets.google_ads.client_secret,
-        "refresh_token":     st.secrets.google_ads.refresh_token,
-        # only if using a manager account
-        "login_customer_id": st.secrets.google_ads.get("login_customer_id", None),
+        "developer_token":    st.secrets.google_ads.developer_token,
+        "use_proto_plus":     True,   # required by the latest google-ads client
+        "client_id":          st.secrets.google_ads.client_id,
+        "client_secret":      st.secrets.google_ads.client_secret,
+        "refresh_token":      st.secrets.google_ads.refresh_token,
+        # only if using a manager (MCC) account:
+        "login_customer_id":  st.secrets.google_ads.get("login_customer_id", None),
     }
     return GoogleAdsClient.load_from_dict(cfg)
 
@@ -88,7 +89,6 @@ if st.sidebar.button("Test OpenAI Connection"):
     try:
         key = st.secrets.openai.api_key
         client = OpenAI(api_key=key)
-        # a lightweight, free-ish endpoint
         models = client.models.list()
         count = len(models.data)
         st.sidebar.success(f"OpenAI OK: {count} models available.")
