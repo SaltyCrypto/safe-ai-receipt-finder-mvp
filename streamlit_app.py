@@ -1,20 +1,16 @@
 import traceback
 import streamlit as st
 import pandas as pd
-import openai
+from openai import OpenAI
 from google.ads.googleads.client import GoogleAdsClient
 import plotly.express as px
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.decomposition import PCA
 
-# ——————————————————————————————
-# Page config
-# ——————————————————————————————
+# ————————————— Page config —————————————
 st.set_page_config(page_title="Creative Intelligence OS", layout="wide")
 
-# ——————————————————————————————
-# Helpers & Cached Clients
-# ——————————————————————————————
+# ————————————— Helpers & Clients —————————————
 @st.cache_resource
 def get_ads_client():
     cfg = {
@@ -27,47 +23,39 @@ def get_ads_client():
     return GoogleAdsClient.load_from_dict(cfg)
 
 @st.cache_data(ttl=3600)
-def fetch_keyword_ideas(customer_id, seed_keywords, language, geo_targets):
+def fetch_keyword_ideas(customer_id, seeds, lang, geos):
     client = get_ads_client()
     svc = client.get_service("KeywordPlanIdeaService")
-    req = client.get_type("GenerateKeywordIdeasRequest")
-    req.customer_id = customer_id
-    req.language = language
-    req.geo_target_constants.extend(geo_targets)
-
-    seed = client.get_type("KeywordSeed")
-    seed.keywords.extend(seed_keywords)
-    req.keyword_seed = seed
-
+    req = client.get_type("GenerateKeywordIdeasRequest")(
+        customer_id=customer_id,
+        language=lang,
+        geo_target_constants=geos,
+        keyword_seed=client.get_type("KeywordSeed")(keywords=seeds),
+    )
     resp = svc.generate_keyword_ideas(request=req)
-    rows = []
-    for idea in resp:
-        m = idea.keyword_idea_metrics
-        rows.append({
-            "Keyword":      idea.text,
-            "Searches/mo":  m.avg_monthly_searches,
-            "Competition":  m.competition.name,
-            "Low CPC ($)":  round(m.low_top_of_page_bid_micros  / 1e6, 2),
-            "High CPC ($)": round(m.high_top_of_page_bid_micros / 1e6, 2),
-        })
+    rows = [{
+        "Keyword": idea.text,
+        "Searches/mo": idea.keyword_idea_metrics.avg_monthly_searches,
+        "Competition": idea.keyword_idea_metrics.competition.name,
+        "Low CPC ($)": round(idea.keyword_idea_metrics.low_top_of_page_bid_micros/1e6,2),
+        "High CPC ($)": round(idea.keyword_idea_metrics.high_top_of_page_bid_micros/1e6,2),
+    } for idea in resp]
     return pd.DataFrame(rows)
 
-def detect_emotion(text: str) -> str:
-    emotion_map = {
-        "Fear":        ["urgent", "risk", "alert", "warning"],
-        "Curiosity":   ["what", "why", "how", "did you know", "?"],
-        "Aspirational":["grow", "future", "dream", "success"],
-        "Authority":   ["expert", "top", "proven", "official"],
+def detect_emotion(txt: str) -> str:
+    m = {
+        "Fear": ["urgent","risk","alert","warning"],
+        "Curiosity": ["what","why","how","?"],
+        "Aspirational": ["grow","future","dream","success"],
+        "Authority": ["expert","top","proven","official"],
     }
-    t = str(text).lower()
-    for emo, kws in emotion_map.items():
+    t = txt.lower()
+    for emo, kws in m.items():
         if any(k in t for k in kws):
             return emo
     return "Neutral"
 
-# ——————————————————————————————
-# Steps & Navigation
-# ——————————————————————————————
+# ————————————— Steps & State —————————————
 STEPS = [
     "Upload",
     "Scoring",
@@ -78,65 +66,52 @@ STEPS = [
     "Export",
 ]
 
-# Initialize session state
-if "step_idx" not in st.session_state:
-    st.session_state.step_idx = 0
+if "step" not in st.session_state:
+    st.session_state.step = 0
 if "df" not in st.session_state:
     st.session_state.df = pd.DataFrame()
 
-def go_next():
-    st.session_state.step_idx = min(st.session_state.step_idx + 1, len(STEPS) - 1)
+def next_step():
+    st.session_state.step = min(st.session_state.step + 1, len(STEPS)-1)
+def prev_step():
+    st.session_state.step = max(st.session_state.step - 1, 0)
 
-def go_back():
-    st.session_state.step_idx = max(st.session_state.step_idx - 1, 0)
+current = STEPS[st.session_state.step]
 
-current_step = STEPS[st.session_state.step_idx]
-
-# Sidebar navigation
+# ————————————— Navigation UI —————————————
 st.sidebar.title("Steps")
-for idx, name in enumerate(STEPS):
-    if st.sidebar.button(name):
-        st.session_state.step_idx = idx
+for i, name in enumerate(STEPS):
+    prefix = "▶️" if i == st.session_state.step else "  "
+    st.sidebar.write(f"{prefix} {name}")
+st.title(f"🧠 Step {st.session_state.step+1}: {current}")
 
-st.title(f"🧠 Step {st.session_state.step_idx + 1}: {current_step}")
-
-# ——————————————————————————————
-# Step: Upload
-# ——————————————————————————————
-if current_step == "Upload":
+# ————————————— Step: Upload —————————————
+if current == "Upload":
     try:
-        uploaded = st.file_uploader(
-            "Upload CSV with a 'creative_text', 'Creative text', or 'Text' column",
-            type="csv"
-        )
-        if uploaded:
-            df = pd.read_csv(uploaded)
-            found_col = None
-
-            # Detect & rename first matching column
-            for c in ["creative_text", "Creative text", "Text"]:
-                if c in df.columns:
-                    found_col = c
-                    df = df.rename(columns={c: "creative_text"})
+        f = st.file_uploader("Upload CSV with 'creative_text', 'Creative text' or 'Text' column", type="csv")
+        if f:
+            df = pd.read_csv(f)
+            found = None
+            for col in ["creative_text","Creative text","Text"]:
+                if col in df:
+                    df = df.rename(columns={col:"creative_text"})
+                    found = col
                     break
-
-            if not found_col:
-                st.error("CSV must include a 'creative_text', 'Creative text', or 'Text' column.")
+            if not found:
+                st.error("CSV must include one of: creative_text, Creative text, Text.")
             else:
                 st.session_state.df = df
-                st.success(f"✅ Loaded {len(df)} rows from '{found_col}'.")
+                st.success(f"Loaded {len(df)} rows from '{found}'.")
     except Exception:
-        st.error("Failed to load CSV:")
+        st.error("Upload failed:")
         st.code(traceback.format_exc())
 
-# ——————————————————————————————
-# Step: Scoring
-# ——————————————————————————————
-elif current_step == "Scoring":
+# ————————————— Step: Scoring —————————————
+elif current == "Scoring":
     try:
         df = st.session_state.df.copy()
         if df.empty:
-            st.warning("Upload data first.")
+            st.warning("Please complete Upload first.")
         else:
             df["score"] = df["creative_text"].str.len().mod(10).add(1)
             df["emotion_detected"] = df["creative_text"].apply(detect_emotion)
@@ -146,145 +121,109 @@ elif current_step == "Scoring":
         st.error("Scoring failed:")
         st.code(traceback.format_exc())
 
-# ——————————————————————————————
-# Step: Keyword Planner
-# ——————————————————————————————
-elif current_step == "Keyword Planner":
+# ————————————— Step: Keyword Planner —————————————
+elif current == "Keyword Planner":
     try:
-        st.markdown("Enter one keyword phrase per line:")
-        keyword_input = st.text_area("Seed Keywords", height=120)
-        geo = st.selectbox("Geo", {
-            "United States": "geoTargetConstants/2840",
-            "UK":             "geoTargetConstants/2826",
-            "Canada":         "geoTargetConstants/2124",
-        }.items(), format_func=lambda x: x[0])
-        lang = st.selectbox("Language", {
-            "English": "1000",
-            "Spanish": "1003",
-        }.items(), format_func=lambda x: x[0])
-
+        st.markdown("Enter one seed keyword per line:")
+        seeds = [w.strip() for w in st.text_area("", height=120).splitlines() if w.strip()]
+        geo = st.selectbox("Geo",{"US":"geoTargetConstants/2840","UK":"geoTargetConstants/2826","CA":"geoTargetConstants/2124"}.items(), format_func=lambda x:x[0])[1]
+        lang= st.selectbox("Language",{"English":"1000","Spanish":"1003"}.items(), format_func=lambda x:x[0])[1]
         if st.button("Fetch Keyword Ideas"):
-            seeds = [w.strip() for w in keyword_input.splitlines() if w.strip()]
             if not seeds:
-                st.warning("Please enter at least one keyword.")
+                st.warning("Add at least one seed keyword.")
             else:
-                with st.spinner("Fetching ideas…"):
-                    df_kws = fetch_keyword_ideas(
-                        customer_id   = st.secrets.google_ads.customer_id,
-                        seed_keywords = seeds,
-                        language      = lang[1],
-                        geo_targets   = [geo[1]],
-                    )
-                st.session_state.df = df_kws
-                st.success(f"Retrieved {len(df_kws)} keywords.")
-                st.dataframe(df_kws)
+                with st.spinner("Fetching…"):
+                    kws = fetch_keyword_ideas(st.secrets.google_ads.customer_id, seeds, lang, [geo])
+                st.session_state.df = kws
+                st.success(f"Retrieved {len(kws)} ideas.")
+                st.dataframe(kws)
     except Exception:
         st.error("Keyword Planner error:")
         st.code(traceback.format_exc())
 
-# ——————————————————————————————
-# Step: Review + Annotate
-# ——————————————————————————————
-elif current_step == "Review + Annotate":
-    if st.session_state.df.empty:
+# ————————————— Step: Review + Annotate —————————————
+elif current == "Review + Annotate":
+    df = st.session_state.df
+    if df.empty:
         st.warning("No data to review.")
     else:
-        st.dataframe(st.session_state.df)
+        edited = st.data_editor(df, num_rows="dynamic", use_container_width=True)
+        st.session_state.df = edited
 
-# ——————————————————————————————
-# Step: GPT Rewrite
-# ——————————————————————————————
-elif current_step == "GPT Rewrite":
+# ————————————— Step: GPT Rewrite —————————————
+elif current == "GPT Rewrite":
     try:
         df = st.session_state.df.copy()
-        if df.empty or "creative_text" not in df.columns:
-            st.warning("Upload or generate creatives first.")
+        if df.empty or "creative_text" not in df:
+            st.warning("Run Upload/Planner first.")
         else:
-            openai.api_key = st.secrets.openai.api_key
+            client = OpenAI(api_key=st.secrets.openai.api_key)
             styles = {
-                "Bold":        "Make this copy sound polished and bold.",
-                "Snappy":      "Rewrite short, punchy, attention-grabbing.",
-                "Empathetic":  "Emotionally supportive, human tone.",
-                "Rude":        "Blunt, no-nonsense voice.",
-                "Inquisitive": "In the form of a curiosity-driven question.",
+                "Bold":"Make this copy sound polished and bold.",
+                "Snappy":"Short, punchy, attention-grabbing.",
+                "Empathetic":"Emotionally supportive, human tone.",
+                "Rude":"Blunt, no-nonsense voice.",
+                "Inquisitive":"In the form of a curiosity-driven question.",
             }
-            choice = st.selectbox("Rewrite Style", list(styles.keys()))
+            style = st.selectbox("Style", list(styles))
             if st.button("Rewrite with GPT"):
-                rewritten, reasons = [], []
-                progress = st.progress(0)
-                total = len(df)
-                for i, text in enumerate(df["creative_text"], 1):
+                out_rewrites, out_reasons = [], []
+                prog = st.progress(0)
+                for i, txt in enumerate(df["creative_text"],1):
                     try:
-                        msgs = [
-                            {"role": "system", "content": "You are a creative ad writer."},
-                            {"role": "user",   "content": f"{styles[choice]}\n\nOriginal: {text}\n\nWhy better?"}
-                        ]
-                        resp = openai.ChatCompletion.create(
-                            model="gpt-4", messages=msgs, temperature=0.8
+                        resp = client.chat.completions.create(
+                            model="gpt-4",
+                            messages=[
+                                {"role":"system","content":"You are a creative ad writer."},
+                                {"role":"user","content":f"{styles[style]}\n\nOriginal: {txt}\n\nWhy better?"}
+                            ],
+                            temperature=0.8,
                         )
-                        out = resp.choices[0].message["content"]
-                        parts = out.split("\n\n", 1)
-                        rewritten.append(parts[0].strip())
-                        reasons.append(parts[1].strip() if len(parts) > 1 else "—")
+                        c = resp.choices[0].message["content"]
+                        parts = c.split("\n\n",1)
+                        out_rewrites.append(parts[0].strip())
+                        out_reasons.append(parts[1].strip() if len(parts)>1 else "—")
                     except Exception as e:
-                        rewritten.append("ERROR")
-                        reasons.append(str(e))
-                    progress.progress(i / total)
-                df[f"rewrite_{choice}"] = rewritten
-                df[f"reason_{choice}"] = reasons
+                        out_rewrites.append("ERROR")
+                        out_reasons.append(str(e))
+                    prog.progress(i/len(df))
+                df[f"rewrite_{style}"] = out_rewrites
+                df[f"reason_{style}"] = out_reasons
                 st.session_state.df = df
                 st.dataframe(df)
     except Exception:
         st.error("GPT Rewrite failed:")
         st.code(traceback.format_exc())
 
-# ——————————————————————————————
-# Step: Clustering
-# ——————————————————————————————
-elif current_step == "Clustering":
+# ————————————— Step: Clustering —————————————
+elif current == "Clustering":
     try:
-        df = st.session_state.df.copy()
-        if df.empty or "creative_text" not in df.columns:
-            st.warning("No creative texts to cluster.")
+        df = st.session_state.df
+        if df.empty or "creative_text" not in df:
+            st.warning("No creatives available.")
         else:
-            vec = TfidfVectorizer(max_features=50)
-            X = vec.fit_transform(df["creative_text"].astype(str))
-            red = PCA(n_components=3).fit_transform(X.toarray())
-            df[["x", "y", "z"]] = red
-            fig = px.scatter_3d(
-                df.head(50), x="x", y="y", z="z",
-                text="creative_text", title="3D Clustering"
-            )
+            X = TfidfVectorizer(max_features=50).fit_transform(df["creative_text"])
+            xyz = PCA(3).fit_transform(X.toarray())
+            df[["x","y","z"]] = xyz
+            fig = px.scatter_3d(df.head(50), x="x", y="y", z="z", text="creative_text")
             st.plotly_chart(fig, use_container_width=True)
     except Exception:
         st.error("Clustering failed:")
         st.code(traceback.format_exc())
 
-# ——————————————————————————————
-# Step: Export
-# ——————————————————————————————
-elif current_step == "Export":
-    try:
-        df = st.session_state.df
-        if df.empty:
-            st.warning("Nothing to export.")
-        else:
-            csv_data = df.to_csv(index=False)
-            st.download_button(
-                "Download CSV", data=csv_data,
-                file_name="creative_output.csv"
-            )
-    except Exception:
-        st.error("Export failed:")
-        st.code(traceback.format_exc())
+# ————————————— Step: Export —————————————
+elif current == "Export":
+    df = st.session_state.df
+    if df.empty:
+        st.warning("Nothing to export.")
+    else:
+        st.download_button("Download CSV", data=df.to_csv(index=False), file_name="output.csv")
 
-# ——————————————————————————————
-# Navigation Buttons
-# ——————————————————————————————
-col1, col2, col3 = st.columns([1, 2, 1])
+# ————————————— Navigation —————————————
+col1, _, col3 = st.columns([1,2,1])
 with col1:
     if st.button("← Back"):
-        go_back()
+        prev_step()
 with col3:
     if st.button("Next →"):
-        go_next()
+        next_step()
