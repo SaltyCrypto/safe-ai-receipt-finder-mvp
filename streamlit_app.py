@@ -1,128 +1,58 @@
 import streamlit as st
-import pandas as pd
 from google.ads.googleads.client import GoogleAdsClient
-from google.ads.googleads.config import load_from_dict
+from google.ads.googleads.errors import GoogleAdsException
 
-st.set_page_config(page_title="Creative Intelligence OS", layout="wide")
+@st.cache_resource
+def load_ads_client():
+    """
+    Load the Google Ads client from Streamlit secrets.
+    """
+    return GoogleAdsClient.load_from_dict(st.secrets["google_ads"])
 
-st.markdown("""
-    <style>
-    [data-testid="stSidebar"] .css-1d391kg {
-        font-size: 1.1rem;
-        padding-left: 0.5rem;
-    }
-    [data-testid="stSidebar"] h1, 
-    [data-testid="stSidebar"] h2, 
-    [data-testid="stSidebar"] h3 {
-        font-size: 1.3rem !important;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
-steps = ["Upload", "Scoring", "Keyword Planner", "Explorer", "Emotional Lens + Scoring", "GPT Rewrite", "Clustering", "Export"]
-
-if "step_idx" not in st.session_state:
-    st.session_state.step_idx = 0
-
-def go_next():
-    if st.session_state.step_idx < len(steps) - 1:
-        st.session_state.step_idx += 1
-
-def go_back():
-    if st.session_state.step_idx > 0:
-        st.session_state.step_idx -= 1
-
-current_step = steps[st.session_state.step_idx]
-st.sidebar.title("🧭 Navigation")
-st.sidebar.progress((st.session_state.step_idx + 1) / len(steps))
-st.sidebar.radio("Jump to step", steps, index=st.session_state.step_idx, key="manual_step")
-
-if st.session_state.manual_step != current_step:
-    st.session_state.step_idx = steps.index(st.session_state.manual_step)
-    current_step = st.session_state.manual_step
-
-st.title(f"🧠 Step {st.session_state.step_idx + 1}: {current_step}")
-
-if current_step == "Upload":
-    file = st.file_uploader("📤 Upload CSV with 'creative_text' or 'Text' column", type="csv")
-    if file:
-        df = pd.read_csv(file)
-        if "Text" in df.columns:
-            df.rename(columns={"Text": "creative_text"}, inplace=True)
-        if "creative_text" not in df.columns:
-            st.error("Missing 'creative_text' column.")
-        else:
-            st.session_state.df = df
-            st.success("✅ File uploaded!")
-            st.dataframe(df)
-
-elif current_step == "Scoring":
-    if "df" in st.session_state:
-        df = st.session_state.df.copy()
-        df["score"] = df["creative_text"].apply(lambda x: len(str(x)) % 10 + 1)
-        st.session_state.df = df
-        st.success("✅ Creatives scored.")
-        st.dataframe(df)
-    else:
-        st.warning("Upload data first.")
-
-elif current_step == "Keyword Planner":
-    config_dict = {
-        "developer_token": st.secrets["google_ads"]["developer_token"],
-        "client_id": st.secrets["google_ads"]["client_id"],
-        "client_secret": st.secrets["google_ads"]["client_secret"],
-        "refresh_token": st.secrets["google_ads"]["refresh_token"],
-        "login_customer_id": "9816127168",
-        "use_proto_plus": True
-    }
-
+def test_connection():
+    """
+    Run a simple query to verify Google Ads API connectivity.
+    """
+    client = load_ads_client()
+    ga_service = client.get_service("GoogleAdsService")
     try:
-        client = GoogleAdsClient.load_from_dict(config_dict)
+        query = "SELECT customer.id, customer.descriptive_name FROM customer LIMIT 1"
+        response = ga_service.search_stream(
+            customer_id=client.login_customer_id or st.secrets["google_ads"].get("login_customer_id"),
+            query=query
+        )
+        for batch in response:
+            for row in batch.results:
+                st.success(f"✅ Connected! Account {row.customer.id} – {row.customer.descriptive_name}")
+                return
+        st.warning("⚠️ Connected but no data returned. Check your customer_id.")
+    except GoogleAdsException as ex:
+        st.error("❌ API call failed:")
+        for error in ex.failure.errors:
+            st.error(f"  • {error.message}")
     except Exception as e:
-        st.error(f"Google Ads error: {e}")
-        st.stop()
+        st.error(f"❌ Something went wrong: {e}")
 
-    customer_id = "2933192176"
+def list_customers():
+    """
+    List all accessible customers under the login customer ID.
+    """
+    client = load_ads_client()
+    svc = client.get_service("CustomerService")
+    response = svc.list_accessible_customers()
+    st.write("**Accessible Customers:**")
+    for resource in response.resource_names:
+        st.write(f"- {resource}")
 
-    keyword = st.text_input("💡 Seed keyword", "life insurance")
-    geo = st.selectbox("🌍 Geo", {
-        "United States": "geoTargetConstants/2840",
-        "UK": "geoTargetConstants/2826",
-        "Canada": "geoTargetConstants/2124"
-    }.items())
-    lang = st.selectbox("🈯 Language", {"English": "1000", "Spanish": "1003"}.items())
+def main():
+    st.title("OAuth Finalizer")
+    st.markdown("Validate your Google Ads OAuth credentials and list accessible customers.")
 
-    if st.button("🔎 Fetch Keyword Ideas"):
-        try:
-            service = client.get_service("KeywordPlanIdeaService")
-            request = client.get_type("GenerateKeywordIdeasRequest")
-            request.customer_id = customer_id
-            request.language = lang[1]
-            request.geo_target_constants.append(geo[1])
-            keyword_seed = client.get_type("KeywordSeed")
-            keyword_seed.keywords.append(keyword)
-            request.keyword_seed = keyword_seed
+    if st.button("Test Google Ads Connection"):
+        test_connection()
 
-            ideas = service.generate_keyword_ideas(request=request)
-            result = [{
-                "Keyword": idea.text,
-                "Searches": idea.keyword_idea_metrics.avg_monthly_searches,
-                "Competition": idea.keyword_idea_metrics.competition.name,
-                "Low CPC": idea.keyword_idea_metrics.low_top_of_page_bid_micros,
-                "High CPC": idea.keyword_idea_metrics.high_top_of_page_bid_micros
-            } for idea in ideas]
-            df = pd.DataFrame(result)
-            st.session_state.df = df
-            st.success("✅ Keywords pulled")
-            st.dataframe(df)
-        except Exception as e:
-            st.error(f"Keyword error: {e}")
+    if st.button("List Accessible Customers"):
+        list_customers()
 
-# Navigation buttons
-col1, col2, col3 = st.columns([1, 2, 1])
-with col1:
-    if st.session_state.step_idx > 0:
-        st.button("⬅️ Back", on_click=go_back)
-with col3:
-    if st.session_state.step_idx < len(steps) - 1:
-        st.button("Next ➡️", on_click=go_next)
+if __name__ == "__main__":
+    main()
