@@ -29,14 +29,11 @@ def get_ads_client():
 def fetch_keyword_ideas(customer_id, seeds, lang, geos):
     client = get_ads_client()
     svc = client.get_service("KeywordPlanIdeaService")
-
-    # In v14+ get_type returns an instance directly
-    req  = client.get_type("GenerateKeywordIdeasRequest")
-    seed = client.get_type("KeywordSeed")
-
+    req = client.get_type("GenerateKeywordIdeasRequest")()
     req.customer_id = customer_id
     req.language = lang
     req.geo_target_constants.extend(geos)
+    seed = client.get_type("KeywordSeed")()
     seed.keywords.extend(seeds)
     req.keyword_seed = seed
 
@@ -97,8 +94,6 @@ if "creatives_df" not in st.session_state:
     st.session_state.creatives_df = pd.DataFrame()
 if "kws_df" not in st.session_state:
     st.session_state.kws_df = pd.DataFrame()
-if "kp_submitted" not in st.session_state:
-    st.session_state.kp_submitted = False
 
 def next_step():
     st.session_state.step = min(st.session_state.step + 1, len(STEPS) - 1)
@@ -180,7 +175,6 @@ elif current == "Keyword Planner":
                         geos=[geo],
                     )
                 st.session_state.kws_df = df_kws
-                st.session_state.kp_submitted = True
                 st.success(f"✅ Retrieved {len(df_kws)} keywords.")
                 st.dataframe(df_kws, use_container_width=True)
             except Exception:
@@ -189,12 +183,55 @@ elif current == "Keyword Planner":
 
 # ————————— Step: Review + Annotate —————————
 elif current == "Review + Annotate":
-    df = st.session_state.creatives_df
+    df = st.session_state.creatives_df.copy()
     if df.empty:
         st.warning("No creatives to review.")
     else:
-        edited = st.data_editor(df, num_rows="dynamic", use_container_width=True)
+        st.markdown("## 🔍 Filters")
+        # 1. Score filter
+        min_score = st.slider("Minimum score", 1, 10, 1)
+        df = df[df["score"] >= min_score]
+
+        # 2. Emotion filter
+        emotions = df["emotion"].unique().tolist()
+        chosen_emos = st.multiselect("Emotions to include", emotions, default=emotions)
+        df = df[df["emotion"].isin(chosen_emos)]
+
+        # 3. Substring search
+        substr = st.text_input("Search text contains")
+        if substr:
+            df = df[df["creative_text"].str.contains(substr, case=False, na=False)]
+
+        # 4. Length bucket
+        st.markdown("### Length bucket")
+        df["length_bucket"] = pd.cut(
+            df["creative_text"].str.len(),
+            bins=[0, 50, 100, 9999],
+            labels=["Short", "Medium", "Long"],
+        )
+        buckets = st.multiselect("Show buckets", ["Short", "Medium", "Long"], default=["Short", "Medium", "Long"])
+        df = df[df["length_bucket"].isin(buckets)]
+
+        st.markdown("## ✍️ Annotate & Tag")
+        # Ensure annotation columns exist
+        for col, default in [("approved", False), ("priority", 3), ("notes", "")]:
+            if col not in df.columns:
+                df[col] = default
+
+        column_config = {
+            "approved": st.column_config.CheckboxColumn("Approved?"),
+            "priority": st.column_config.SliderColumn("Priority", min_value=1, max_value=5),
+            "notes":    st.column_config.TextColumn("Notes"),
+        }
+
+        edited = st.data_editor(
+            df,
+            column_config=column_config,
+            use_container_width=True,
+            key="review_editor",
+        )
         st.session_state.creatives_df = edited
+        st.success("✅ Review changes saved.")
 
 # ————————— Step: GPT Rewrite —————————
 elif current == "GPT Rewrite":
@@ -211,7 +248,7 @@ elif current == "GPT Rewrite":
             "Inquisitive": "Frame as curiosity-driven question.",
         }
         choice = st.selectbox("Rewrite Style", list(styles.keys()))
-        if st.button("Rewrite with GPT"):
+        if st.button("🔁 Rewrite with GPT"):
             rewritten, reasons = [], []
             prog = st.progress(0)
             for i, text in enumerate(df["creative_text"], start=1):
@@ -220,7 +257,7 @@ elif current == "GPT Rewrite":
                         model="gpt-4",
                         messages=[
                             {"role": "system", "content": "You are a creative ad writer."},
-                            {"role": "user",   "content": f"{styles[choice]}\n\n{text}"}
+                            {"role": "user",   "content": f"{styles[choice]}\n\nOriginal: {text}"}
                         ],
                         temperature=0.8,
                     )
@@ -246,7 +283,8 @@ elif current == "Clustering":
         X = TfidfVectorizer(max_features=50).fit_transform(df["creative_text"].astype(str))
         coords = PCA(n_components=3).fit_transform(X.toarray())
         df[["x", "y", "z"]] = coords
-        fig = px.scatter_3d(df.head(50), x="x", y="y", z="z", text="creative_text", title="3D Creative Clustering")
+        fig = px.scatter_3d(df.head(50), x="x", y="y", z="z",
+                            text="creative_text", title="3D Creative Clustering")
         st.plotly_chart(fig, use_container_width=True)
 
 # ————————— Step: Export —————————
@@ -257,7 +295,7 @@ elif current == "Export":
         st.warning(f"No {choice.lower()} to export.")
     else:
         csv = df_out.to_csv(index=False)
-        st.download_button(f"Download {choice}", data=csv, file_name=f"{choice}.csv")
+        st.download_button(f"⬇️ Download {choice}", data=csv, file_name=f"{choice}.csv")
 
 # ————————— Navigation —————————
 col1, _, col3 = st.columns([1, 2, 1])
@@ -265,8 +303,5 @@ with col1:
     if st.button("← Back"):
         prev_step()
 with col3:
-    if current == "Keyword Planner" and not st.session_state.kp_submitted:
-        st.button("Next →", disabled=True)
-    else:
-        if st.button("Next →"):
-            next_step()
+    if st.button("Next →"):
+        next_step()
