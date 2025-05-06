@@ -22,7 +22,6 @@ def get_ads_client():
         "client_id":         st.secrets.google_ads.client_id,
         "client_secret":     st.secrets.google_ads.client_secret,
         "refresh_token":     st.secrets.google_ads.refresh_token,
-        # use either customer_id or login_customer_id depending on your setup
         "login_customer_id": st.secrets.google_ads.get("login_customer_id", None),
     }
     return GoogleAdsClient.load_from_dict(cfg)
@@ -106,14 +105,26 @@ st.title(f"🧠 Step {st.session_state.step_idx + 1}: {current_step}")
 # ——————————————————————————————
 if current_step == "Upload":
     try:
-        uploaded = st.file_uploader("Upload CSV with 'creative_text' column", type="csv")
+        uploaded = st.file_uploader(
+            "Upload CSV with a 'creative_text', 'Creative text', or 'Text' column",
+            type="csv"
+        )
         if uploaded:
             df = pd.read_csv(uploaded)
-            if "creative_text" not in df.columns:
-                st.error("CSV must include a 'creative_text' column.")
+            found_col = None
+
+            # Detect & rename first matching column
+            for c in ["creative_text", "Creative text", "Text"]:
+                if c in df.columns:
+                    found_col = c
+                    df = df.rename(columns={c: "creative_text"})
+                    break
+
+            if not found_col:
+                st.error("CSV must include a 'creative_text', 'Creative text', or 'Text' column.")
             else:
                 st.session_state.df = df
-                st.success(f"Loaded {len(df)} rows.")
+                st.success(f"✅ Loaded {len(df)} rows from '{found_col}'.")
     except Exception:
         st.error("Failed to load CSV:")
         st.code(traceback.format_exc())
