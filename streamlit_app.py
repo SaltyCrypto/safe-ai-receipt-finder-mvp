@@ -29,11 +29,14 @@ def get_ads_client():
 def fetch_keyword_ideas(customer_id, seeds, lang, geos):
     client = get_ads_client()
     svc = client.get_service("KeywordPlanIdeaService")
-    req = client.get_type("GenerateKeywordIdeasRequest")()
+
+    # In v14+ get_type returns an instance directly
+    req  = client.get_type("GenerateKeywordIdeasRequest")
+    seed = client.get_type("KeywordSeed")
+
     req.customer_id = customer_id
     req.language = lang
     req.geo_target_constants.extend(geos)
-    seed = client.get_type("KeywordSeed")()
     seed.keywords.extend(seeds)
     req.keyword_seed = seed
 
