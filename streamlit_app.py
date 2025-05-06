@@ -13,14 +13,18 @@ st.set_page_config(page_title="Creative Intelligence OS", layout="wide")
 # ————————————— Helpers & Cached Clients —————————————
 @st.cache_resource
 def get_ads_client():
+    # Build the config dict, only including login_customer_id if it’s set
     cfg = {
-        "developer_token":   st.secrets.google_ads.developer_token,
-        "use_proto_plus":    True,   # required by google-ads client v14+
-        "client_id":         st.secrets.google_ads.client_id,
-        "client_secret":     st.secrets.google_ads.client_secret,
-        "refresh_token":     st.secrets.google_ads.refresh_token,
-        "login_customer_id": st.secrets.google_ads.get("login_customer_id", None),
+        "developer_token": st.secrets.google_ads.developer_token,
+        "use_proto_plus":  True,  # required by google-ads client v14+
+        "client_id":       st.secrets.google_ads.client_id,
+        "client_secret":   st.secrets.google_ads.client_secret,
+        "refresh_token":   st.secrets.google_ads.refresh_token,
     }
+    login_cid = st.secrets.google_ads.get("login_customer_id")
+    if login_cid:
+        cfg["login_customer_id"] = login_cid
+
     return GoogleAdsClient.load_from_dict(cfg)
 
 @st.cache_data(ttl=3600)
