@@ -79,7 +79,7 @@ if st.sidebar.button("Test Google Ads Connection"):
         if first:
             st.sidebar.success(f"Google Ads OK: Customer ID {first.customer.id}")
         else:
-            st.sidebar.error("Google Ads: Connected but no rows returned.")
+            st.sidebar.error("Google Ads: connected but no rows returned.")
     except Exception:
         st.sidebar.error("Google Ads Connection failed:")
         st.sidebar.code(traceback.format_exc(), language="python")
@@ -87,8 +87,7 @@ if st.sidebar.button("Test Google Ads Connection"):
 # OpenAI Test
 if st.sidebar.button("Test OpenAI Connection"):
     try:
-        key = st.secrets.openai.api_key
-        client = OpenAI(api_key=key)
+        client = OpenAI(api_key=st.secrets.openai.api_key)
         models = client.models.list()
         count = len(models.data)
         st.sidebar.success(f"OpenAI OK: {count} models available.")
